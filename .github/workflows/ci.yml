@@ -89,7 +89,7 @@ jobs:
         run: cargo build --workspace --verbose
       - name: Run tests
         shell: bash -el {0}
-        run: cargo test --workspace --all-features --verbose
+        run: cargo test --workspace --all-features --verbose -- --test-threads=1
 
   macos:
     name: macOS
@@ -135,7 +135,7 @@ jobs:
         if: matrix.hdf5_source == 'system'
         run: |
           cd tests/julia
-          HDF5_LIBDIR=$(pkg-config --variable=libdir hdf5_serial)
+          HDF5_LIBDIR=$(pkg-config --variable=libdir hdf5_serial 2>/dev/null || echo /usr/lib/x86_64-linux-gnu/hdf5/serial)
           echo "LD_LIBRARY_PATH=$HDF5_LIBDIR:$LD_LIBRARY_PATH" >> $GITHUB_ENV
           julia --project=. -e "
             using Pkg; Pkg.instantiate()

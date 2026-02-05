@@ -68,6 +68,13 @@ function run_rust_binary(binary_path::String, hdf5_lib::String, mode::String, fi
 
     println("Running: $cmd")
 
+    # Set LD_LIBRARY_PATH so the Rust binary can dlopen HDF5 and its dependencies
+    hdf5_libdir = dirname(hdf5_lib)
+    env = copy(ENV)
+    ld_path = get(env, "LD_LIBRARY_PATH", "")
+    env["LD_LIBRARY_PATH"] = isempty(ld_path) ? hdf5_libdir : "$hdf5_libdir:$ld_path"
+    cmd = setenv(cmd, env)
+
     # Run and capture output (ignorestatus to avoid exception on non-zero exit)
     output = read(cmd, String)
     println("stdout: $output")
