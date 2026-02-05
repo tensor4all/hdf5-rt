@@ -68,18 +68,23 @@ fn main() -> ExitCode {
 }
 
 fn read_test_file(path: &PathBuf) -> hdf5::Result<()> {
-    use hdf5::types::VarLenUnicode;
+    use hdf5::types::{FixedUnicode, VarLenUnicode};
     use hdf5::File;
-    use std::str::FromStr;
 
     let file = File::open(path)?;
 
     // Read scalar attribute from root group
+    // Try variable-length first, fall back to fixed-length
     let root = file.group("/")?;
-    let attr_value: VarLenUnicode = root.attr("test_attr")?.read_scalar()?;
-    let expected_attr = VarLenUnicode::from_str("hello from julia/python").unwrap();
-    assert_eq!(attr_value, expected_attr, "Attribute mismatch");
-    println!("  Attribute 'test_attr': {}", attr_value.as_str());
+    let attr = root.attr("test_attr")?;
+    let attr_str = if let Ok(val) = attr.read_scalar::<VarLenUnicode>() {
+        val.as_str().to_string()
+    } else {
+        let val: FixedUnicode<32> = attr.read_scalar()?;
+        val.as_str().trim_end_matches('\0').to_string()
+    };
+    assert_eq!(attr_str, "hello from julia/python", "Attribute mismatch");
+    println!("  Attribute 'test_attr': {}", attr_str);
 
     // Read 1D integer dataset
     let ds_int = file.dataset("integers")?;
@@ -94,15 +99,12 @@ fn read_test_file(path: &PathBuf) -> hdf5::Result<()> {
     assert_eq!(float_data, expected, "Float matrix mismatch");
     println!("  Dataset 'matrix': {:?}", float_data);
 
-    // Read string dataset
+    // Read string dataset (as variable-length unicode strings)
     let ds_str = file.dataset("strings")?;
-    let str_data: Vec<VarLenUnicode> = ds_str.read_raw()?;
-    let expected_strs: Vec<VarLenUnicode> = vec!["foo", "bar", "baz"]
-        .into_iter()
-        .map(|s| VarLenUnicode::from_str(s).unwrap())
-        .collect();
-    assert_eq!(str_data, expected_strs, "String dataset mismatch");
-    println!("  Dataset 'strings': {:?}", str_data.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+    let str_data: Vec<hdf5::types::VarLenUnicode> = ds_str.read_raw()?;
+    let str_values: Vec<&str> = str_data.iter().map(|s| s.as_str()).collect();
+    assert_eq!(str_values, vec!["foo", "bar", "baz"], "String dataset mismatch");
+    println!("  Dataset 'strings': {:?}", str_values);
 
     Ok(())
 }

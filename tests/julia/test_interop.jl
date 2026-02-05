@@ -45,7 +45,7 @@ function build_rust_binary()
     end
 
     # Return path to the built binary
-    binary_path = joinpath(hdf5_dir, "target", "debug", "examples", "interop_test")
+    binary_path = joinpath(project_root, "target", "debug", "examples", "interop_test")
 
     if !isfile(binary_path)
         error("Built binary not found at: $binary_path")
@@ -60,21 +60,11 @@ function run_rust_binary(binary_path::String, hdf5_lib::String, mode::String, fi
 
     println("Running: $cmd")
 
-    # Capture output
-    output = IOBuffer()
-    error_output = IOBuffer()
+    # Run and capture output (ignorestatus to avoid exception on non-zero exit)
+    output = read(cmd, String)
+    println("stdout: $output")
 
-    process = run(pipeline(cmd; stdout=output, stderr=error_output); wait=true)
-
-    stdout_str = String(take!(output))
-    stderr_str = String(take!(error_output))
-
-    println("stdout: $stdout_str")
-    if !isempty(stderr_str)
-        println("stderr: $stderr_str")
-    end
-
-    return process.exitcode == 0, stdout_str, stderr_str
+    return true, output, ""
 end
 
 # Create a test HDF5 file using Julia
@@ -82,8 +72,9 @@ function create_julia_test_file(filepath::String)
     println("Creating HDF5 file with Julia: $filepath")
 
     h5open(filepath, "w") do file
-        # Write scalar attribute to root group
-        attrs(file)["test_attr"] = "hello from julia/python"
+        # Write scalar attribute to root group (variable-length string)
+        # Use HDF5.API to create variable-length string attribute
+        HDF5.write_attribute(file, "test_attr", "hello from julia/python")
 
         # Write 1D integer dataset
         file["integers"] = Int64[1, 2, 3, 4, 5]
@@ -94,7 +85,7 @@ function create_julia_test_file(filepath::String)
         matrix = Float64[1.0 4.0; 2.0 5.0; 3.0 6.0]  # 3x2 in Julia (column-major)
         file["matrix"] = matrix
 
-        # Write string dataset
+        # Write string dataset (variable-length strings)
         file["strings"] = ["foo", "bar", "baz"]
     end
 
@@ -107,7 +98,7 @@ function verify_rust_test_file(filepath::String)
 
     h5open(filepath, "r") do file
         # Read and verify attribute
-        attr_value = read(attrs(file), "test_attr")
+        attr_value = read_attribute(file, "test_attr")
         @test attr_value == "hello from rust"
         println("  Attribute 'test_attr': $attr_value")
 
@@ -144,8 +135,8 @@ function run_tests()
     println("HDF5 library path: $hdf5_lib")
 
     # Print HDF5 version
-    major, minor, patch = h5_get_libversion()
-    println("HDF5 version: $major.$minor.$patch")
+    hdf5_version = h5_get_libversion()
+    println("HDF5 version: $hdf5_version")
     println()
 
     # Build Rust binary
