@@ -6,18 +6,10 @@ use std::ptr;
 use crate::sys::h5o::H5Ocopy;
 #[allow(deprecated)]
 use crate::sys::h5o::H5Oset_comment;
-#[cfg(feature = "1.12.0")]
 use crate::sys::h5o::{
-    H5O_info2_t, H5O_token_t, H5Oget_info3, H5Oget_info_by_name3, H5Oopen_by_token,
+    H5O_info2_t, H5O_token_t, H5Oget_info3, H5Oget_info_by_name3, H5Oopen_by_token, H5O_INFO_BASIC,
+    H5O_INFO_NUM_ATTRS, H5O_INFO_TIME,
 };
-#[cfg(not(feature = "1.10.3"))]
-use crate::sys::h5o::{H5Oget_info1, H5Oget_info_by_name1};
-#[cfg(all(feature = "1.10.3", not(feature = "1.12.0")))]
-use crate::sys::h5o::{H5Oget_info2, H5Oget_info_by_name2};
-#[cfg(feature = "1.10.3")]
-use crate::sys::h5o::{H5O_INFO_BASIC, H5O_INFO_NUM_ATTRS, H5O_INFO_TIME};
-#[cfg(not(feature = "1.12.0"))]
-use crate::sys::{h5::haddr_t, h5o::H5O_info1_t, h5o::H5Oopen_by_addr};
 use crate::sys::{
     h5a::{H5Adelete, H5Aopen},
     h5f::H5Fget_name,
@@ -236,12 +228,9 @@ impl Location {
     }
 }
 
-/// A token containing the address or identifier of a [`Location`].
+/// A token containing the identifier of a [`Location`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LocationToken(
-    #[cfg(not(feature = "1.12.0"))] haddr_t,
-    #[cfg(feature = "1.12.0")] H5O_token_t,
-);
+pub struct LocationToken(H5O_token_t);
 
 /// The type of an object in a [`Location`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -249,8 +238,6 @@ pub enum LocationType {
     Group,
     Dataset,
     NamedDatatype,
-    #[cfg(feature = "1.12.0")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "1.12.0")))]
     TypeMap,
 }
 
@@ -262,7 +249,6 @@ impl From<H5O_type_t> for LocationType {
         match loc_type {
             H5O_type_t::H5O_TYPE_DATASET => Self::Dataset,
             H5O_type_t::H5O_TYPE_NAMED_DATATYPE => Self::NamedDatatype,
-            #[cfg(feature = "1.12.0")]
             H5O_type_t::H5O_TYPE_MAP => Self::TypeMap,
             _ => Self::Group, // see the comment above
         }
@@ -305,24 +291,6 @@ pub struct LocationInfo {
     pub num_attrs: usize,
 }
 
-#[cfg(not(feature = "1.12.0"))]
-impl From<H5O_info1_t> for LocationInfo {
-    fn from(info: H5O_info1_t) -> Self {
-        Self {
-            fileno: info.fileno as _,
-            token: LocationToken(info.addr),
-            loc_type: info.type_.into(),
-            num_links: info.rc as _,
-            atime: info.atime as _,
-            mtime: info.mtime as _,
-            ctime: info.ctime as _,
-            btime: info.btime as _,
-            num_attrs: info.num_attrs as _,
-        }
-    }
-}
-
-#[cfg(feature = "1.12.0")]
 impl From<H5O_info2_t> for LocationInfo {
     fn from(info: H5O_info2_t) -> Self {
         Self {
@@ -339,7 +307,6 @@ impl From<H5O_info2_t> for LocationInfo {
     }
 }
 
-#[cfg(feature = "1.10.3")]
 fn info_fields(full: bool) -> c_uint {
     if full {
         H5O_INFO_BASIC | H5O_INFO_NUM_ATTRS | H5O_INFO_TIME
@@ -348,44 +315,27 @@ fn info_fields(full: bool) -> c_uint {
     }
 }
 
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 fn H5O_get_info(loc_id: hid_t, full: bool) -> Result<LocationInfo> {
     let mut info_buf = MaybeUninit::uninit();
     let info_ptr = info_buf.as_mut_ptr();
-    #[cfg(feature = "1.12.0")]
     h5call!(H5Oget_info3(loc_id, info_ptr, info_fields(full)))?;
-    #[cfg(all(feature = "1.10.3", not(feature = "1.12.0")))]
-    h5call!(H5Oget_info2(loc_id, info_ptr, info_fields(full)))?;
-    #[cfg(not(feature = "1.10.3"))]
-    h5call!(H5Oget_info1(loc_id, info_ptr))?;
     let info = unsafe { info_buf.assume_init() };
     Ok(info.into())
 }
 
-#[allow(non_snake_case, unused_variables)]
+#[allow(non_snake_case)]
 fn H5O_get_info_by_name(loc_id: hid_t, name: *const c_char, full: bool) -> Result<LocationInfo> {
     let mut info_buf = MaybeUninit::uninit();
     let info_ptr = info_buf.as_mut_ptr();
-    #[cfg(feature = "1.12.0")]
     h5call!(H5Oget_info_by_name3(loc_id, name, info_ptr, info_fields(full), H5P_DEFAULT))?;
-    #[cfg(all(feature = "1.10.3", not(feature = "1.12.0")))]
-    h5call!(H5Oget_info_by_name2(loc_id, name, info_ptr, info_fields(full), H5P_DEFAULT))?;
-    #[cfg(not(feature = "1.10.3"))]
-    h5call!(H5Oget_info_by_name1(loc_id, name, info_ptr, H5P_DEFAULT))?;
     let info = unsafe { info_buf.assume_init() };
     Ok(info.into())
 }
 
 #[allow(non_snake_case)]
 fn H5O_open_by_token(loc_id: hid_t, token: LocationToken) -> Result<Location> {
-    #[cfg(not(feature = "1.12.0"))]
-    {
-        Location::from_id(h5call!(H5Oopen_by_addr(loc_id, token.0))?)
-    }
-    #[cfg(feature = "1.12.0")]
-    {
-        Location::from_id(h5call!(H5Oopen_by_token(loc_id, token.0))?)
-    }
+    Location::from_id(h5call!(H5Oopen_by_token(loc_id, token.0))?)
 }
 
 #[cfg(test)]
