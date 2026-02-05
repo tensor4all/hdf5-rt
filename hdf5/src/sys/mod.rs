@@ -1,29 +1,15 @@
 //! HDF5 FFI abstraction layer.
 //!
-//! This module provides an abstraction over HDF5 FFI that supports two modes:
-//! - Link mode (default): Uses hdf5-sys (build-time linking)
-//! - Runtime-loading mode: Loads HDF5 at runtime via dlopen
+//! This module provides HDF5 FFI bindings using runtime library loading (dlopen).
+//! Types are defined locally and functions are loaded dynamically.
 //!
-//! For link mode, this simply re-exports from hdf5_sys.
-//! For runtime-loading mode, types are defined locally and functions are loaded dynamically.
+//! For build-time linking, use the upstream hdf5-metno crate directly.
 
-// Link mode (default): re-export everything from hdf5_sys
-#[cfg(feature = "link")]
-pub use hdf5_sys::*;
-
-// Runtime-loading mode: use local type definitions and dlopen
-// Note: link takes precedence if both features are enabled
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 mod runtime;
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub use runtime::*;
 
 // Re-export submodules for API compatibility
-// In link mode, these come from hdf5_sys
-// In runtime-loading mode, we create compatibility modules
-
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5 {
     pub use super::runtime::{
         c_char, c_double, c_float, c_int, c_long, c_uint, c_ulong, c_void, haddr_t, hbool_t,
@@ -33,7 +19,6 @@ pub mod h5 {
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5a {
     pub use super::runtime::{
         H5A_info_t, H5A_operator2_t, H5Aclose, H5Acreate2, H5Adelete, H5Aexists, H5Aget_name,
@@ -42,7 +27,6 @@ pub mod h5a {
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5ac {
     pub use super::runtime::{
         H5AC_cache_config_t, H5AC_cache_image_config_t, H5AC_METADATA_WRITE_STRATEGY__DISTRIBUTED,
@@ -51,12 +35,10 @@ pub mod h5ac {
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5c {
     pub use super::runtime::{H5C_cache_decr_mode, H5C_cache_flash_incr_mode, H5C_cache_incr_mode};
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5d {
     pub use super::runtime::{
         H5D_alloc_time_t, H5D_fill_time_t, H5D_fill_value_t, H5D_layout_t, H5Dclose, H5Dcreate2,
@@ -66,7 +48,6 @@ pub mod h5d {
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5e {
     pub use super::runtime::{
         // Types
@@ -237,7 +218,6 @@ pub mod h5e {
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5f {
     pub use super::runtime::{
         H5F_close_degree_t, H5F_fspace_strategy_t, H5F_libver_t, H5F_mem_t, H5Fclose, H5Fcreate,
@@ -251,7 +231,6 @@ pub mod h5f {
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5fd {
     pub use super::runtime::{
         H5FD_LOG_ALL, H5FD_LOG_ALLOC, H5FD_LOG_FILE_IO, H5FD_LOG_FILE_READ, H5FD_LOG_FILE_WRITE,
@@ -264,14 +243,12 @@ pub mod h5fd {
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5g {
     pub use super::runtime::{
         H5G_info_t, H5Gclose, H5Gcreate2, H5Gget_create_plist, H5Gget_info, H5Gopen2,
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5i {
     pub use super::runtime::{
         hid_t, H5I_type_t, H5Idec_ref, H5Iget_file_id, H5Iget_name, H5Iget_ref, H5Iget_type,
@@ -279,7 +256,6 @@ pub mod h5i {
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5l {
     pub use super::runtime::{
         H5L_info2_t, H5L_info_t, H5L_iterate2_t, H5L_iterate_t, H5L_type_t, H5Lcreate_external,
@@ -288,7 +264,6 @@ pub mod h5l {
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5o {
     pub use super::runtime::{
         H5O_info2_t, H5O_token_t, H5O_type_t, H5Oclose, H5Ocopy, H5Oget_comment, H5Oget_info3,
@@ -302,7 +277,6 @@ pub mod h5o {
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5p {
     pub use super::runtime::{
         // Functions
@@ -448,7 +422,6 @@ pub mod h5p {
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5r {
     pub use super::runtime::{
         hobj_ref_t, H5R_ref_t, H5R_type_t, H5Rcreate, H5Rcreate_object, H5Rdereference, H5Rdestroy,
@@ -456,11 +429,10 @@ pub mod h5r {
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5s {
     pub use super::runtime::{
         H5S_class_t, H5S_sel_type, H5S_seloper_t, H5Sclose, H5Scopy, H5Screate, H5Screate_simple,
-        H5Sdecode, H5Sencode1, H5Sencode2, H5Sget_regular_hyperslab, H5Sget_select_elem_npoints,
+        H5Sdecode, H5Sencode2, H5Sget_regular_hyperslab, H5Sget_select_elem_npoints,
         H5Sget_select_elem_pointlist, H5Sget_select_npoints, H5Sget_select_type,
         H5Sget_simple_extent_dims, H5Sget_simple_extent_ndims, H5Sget_simple_extent_npoints,
         H5Sget_simple_extent_type, H5Sis_regular_hyperslab, H5Sselect_all, H5Sselect_elements,
@@ -469,7 +441,6 @@ pub mod h5s {
     };
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5t {
     pub use super::runtime::{
         // Type conversion types
@@ -629,7 +600,6 @@ pub mod h5t {
     pub use super::runtime::H5T_class_t::*;
 }
 
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5z {
     pub use super::runtime::{
         H5Z_class2_t, H5Z_filter_t, H5Zfilter_avail, H5Zget_filter_info, H5Zregister,
@@ -641,46 +611,20 @@ pub mod h5z {
     };
 }
 
-// Re-export Version type and HDF5_VERSION constant for both modes
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
-pub use runtime::{Version, HDF5_VERSION};
-
-// Re-export LOCK for both modes
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
-pub use runtime::LOCK;
-
 /// Initialize HDF5 library.
 ///
-/// In link mode, this is a no-op (library is always available).
-/// In runtime-loading mode, this loads the library from the specified path.
-#[cfg(feature = "link")]
-pub fn init(_path: Option<&str>) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
+/// Loads the HDF5 library from the specified path using dlopen.
+/// If no path is specified, searches default system locations.
 pub fn init(path: Option<&str>) -> Result<(), String> {
     runtime::init(path)
 }
 
 /// Check if the HDF5 library is initialized.
-#[cfg(feature = "link")]
-pub fn is_initialized() -> bool {
-    true
-}
-
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub fn is_initialized() -> bool {
     runtime::is_initialized()
 }
 
-/// Get the library path (only meaningful in runtime-loading mode).
-#[cfg(feature = "link")]
-pub fn library_path() -> Option<String> {
-    None
-}
-
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
+/// Get the library path.
 pub fn library_path() -> Option<String> {
     runtime::library_path()
 }

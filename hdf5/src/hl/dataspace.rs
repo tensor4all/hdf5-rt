@@ -2,9 +2,6 @@ use std::fmt::{self, Debug};
 use std::ops::Deref;
 use std::ptr;
 
-#[cfg(not(feature = "1.12.0"))]
-use crate::sys::h5s::H5Sencode1;
-#[cfg(feature = "1.12.0")]
 use crate::sys::h5s::H5Sencode2;
 
 use crate::sys::h5s::{
@@ -151,26 +148,14 @@ impl Dataspace {
     /// Returns an error if the underlying encoding call fails.
     #[allow(deprecated)]
     pub fn encode(&self) -> Result<Vec<u8>> {
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "1.12.0")] {
-                h5lock!({
-                    let mut len: size_t = 0;
-                    let fapl = crate::hl::plist::file_access::FileAccessBuilder::new().finish()?;
-                    h5try!(H5Sencode2(self.id(), ptr::null_mut(), &mut len, fapl.id()));
-                    let mut buf = vec![0_u8; len];
-                    h5try!(H5Sencode2(self.id(), buf.as_mut_ptr().cast(), &mut len, fapl.id()));
-                    Ok(buf)
-                })
-            } else {
-                h5lock!({
-                    let mut len: size_t = 0;
-                    h5try!(H5Sencode1(self.id(), ptr::null_mut(), ptr::addr_of_mut!(len)));
-                    let mut buf = vec![0_u8; len];
-                    h5try!(H5Sencode1(self.id(), buf.as_mut_ptr().cast(), ptr::addr_of_mut!(len)));
-                    Ok(buf)
-                })
-            }
-        }
+        h5lock!({
+            let mut len: size_t = 0;
+            let fapl = crate::hl::plist::file_access::FileAccessBuilder::new().finish()?;
+            h5try!(H5Sencode2(self.id(), ptr::null_mut(), &mut len, fapl.id()));
+            let mut buf = vec![0_u8; len];
+            h5try!(H5Sencode2(self.id(), buf.as_mut_ptr().cast(), &mut len, fapl.id()));
+            Ok(buf)
+        })
     }
 
     /// Tries to decode a dataspace from a byte buffer.

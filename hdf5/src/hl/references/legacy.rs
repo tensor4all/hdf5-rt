@@ -5,14 +5,9 @@ use crate::internal_prelude::*;
 use crate::sys::{
     h5o::H5O_type_t,
     h5p::H5P_DEFAULT,
-    h5r::{hobj_ref_t, H5Rcreate, H5Rdereference, H5Rget_obj_type2},
+    h5r::{hobj_ref_t, H5Rcreate, H5Rdereference, H5Rget_obj_type2, H5R_OBJECT1},
 };
 use hdf5_types::H5Type;
-
-#[cfg(not(feature = "1.12.0"))]
-use crate::sys::h5r::H5R_OBJECT as H5R_OBJECT1;
-#[cfg(feature = "1.12.0")]
-use crate::sys::h5r::H5R_OBJECT1;
 
 use super::{private::ObjectReferencePrivate, ObjectReference};
 use crate::Location;
@@ -62,11 +57,9 @@ impl ObjectReference for ObjectReference1 {
 
     fn dereference(&self, location: &Location) -> Result<ReferencedObject> {
         let object_type = self.get_object_type(location)?;
-        #[cfg(feature = "1.10.0")]
+        // HDF5 1.10.0+ signature includes H5P_DEFAULT
         let object_id =
             h5call!(H5Rdereference(location.id(), H5P_DEFAULT, H5R_OBJECT1, self.ptr()))?;
-        #[cfg(not(feature = "1.10.0"))]
-        let object_id = h5call!(H5Rdereference(location.id(), H5R_OBJECT1, self.ptr()))?;
         ReferencedObject::from_type_and_id(object_type, object_id)
     }
 }

@@ -1641,16 +1641,10 @@ hdf5_function!(
         space_id: hid_t,
     ) -> herr_t
 );
-// H5Rdereference has different signatures in different HDF5 versions
-#[cfg(feature = "1.10.0")]
+// H5Rdereference - HDF5 1.10.0+ signature (we require 1.12+)
 hdf5_function!(
     H5Rdereference,
     fn(obj_id: hid_t, oapl_id: hid_t, ref_type: H5R_type_t, ref_ptr: *const c_void) -> hid_t
-);
-#[cfg(not(feature = "1.10.0"))]
-hdf5_function!(
-    H5Rdereference,
-    fn(obj_id: hid_t, ref_type: H5R_type_t, ref_ptr: *const c_void) -> hid_t
 );
 hdf5_function!(
     H5Rget_obj_type2,

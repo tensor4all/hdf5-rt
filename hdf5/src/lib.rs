@@ -64,7 +64,7 @@ mod export {
         },
     };
 
-    #[cfg(feature = "1.12.1")]
+    // ObjectReference2 requires HDF5 1.12.1+ which is satisfied by our minimum requirement
     pub use crate::hl::references::ObjectReference2;
 
     #[doc(hidden)]
@@ -80,8 +80,7 @@ mod export {
     /// Multi-dimensional datasets.
     pub mod dataset {
         pub use crate::hl::chunks::ChunkInfo;
-        #[cfg(all(feature = "1.14.0", feature = "link"))]
-        pub use crate::hl::chunks::ChunkInfoRef;
+        // NOTE: ChunkInfoRef is not available in runtime-loading mode (requires H5Dchunk_iter)
         pub use crate::hl::dataset::{Chunk, Dataset, DatasetBuilder};
         pub use crate::hl::plist::dataset_access::*;
         pub use crate::hl::plist::dataset_create::*;
@@ -211,31 +210,15 @@ pub fn is_library_threadsafe() -> bool {
     h5call!(H5is_library_threadsafe(&mut ts)).map(|_| ts > 0).unwrap_or(false)
 }
 
-/// HDF5 library version used at link time.
-#[cfg(feature = "link")]
-pub const HDF5_VERSION: hdf5_sys::Version = hdf5_sys::HDF5_VERSION;
-
-/// HDF5 library version (runtime-loading mode uses a default).
-#[cfg(all(feature = "runtime-loading", not(feature = "link")))]
+/// HDF5 library version (minimum required version for runtime-loading mode).
 pub const HDF5_VERSION: crate::sys::Version = crate::sys::HDF5_VERSION;
 
 #[cfg(test)]
 pub mod tests {
     use crate::library_version;
-    use crate::HDF5_VERSION;
 
     #[test]
     pub fn test_minimum_library_version() {
         assert!(library_version() >= (1, 12, 0));
-    }
-
-    #[test]
-    #[cfg(feature = "link")]
-    fn library_version_eq_compile_version() {
-        use crate::sys::Version;
-        let (major, minor, micro) = library_version();
-        let runtime_version = Version { major, minor, micro };
-
-        assert_eq!(runtime_version, HDF5_VERSION);
     }
 }

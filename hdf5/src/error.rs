@@ -394,24 +394,19 @@ pub mod tests {
              [Property lists: Unable to free object]"
         );
 
-        #[cfg(not(feature = "1.14.0"))]
-        {
-            assert_eq!(stack[stack.len() - 1].description(), "H5I_dec_ref(): can't locate ID");
-            assert_eq!(
-                &stack[stack.len() - 1].detail().unwrap(),
-                "Error in H5I_dec_ref(): can't locate ID \
-             [Object atom: Unable to find atom information (already closed?)]"
-            );
-        }
-        #[cfg(feature = "1.14.0")]
-        {
-            assert_eq!(stack[stack.len() - 1].description(), "H5I__dec_ref(): can't locate ID");
-            assert_eq!(
-                &stack[stack.len() - 1].detail().unwrap(),
-                "Error in H5I__dec_ref(): can't locate ID \
-             [Object ID: Unable to find ID information (already closed?)]"
-            );
-        }
+        // Error message format varies between HDF5 versions (1.14+ uses H5I__dec_ref)
+        let last_desc = stack[stack.len() - 1].description();
+        assert!(
+            last_desc == "H5I_dec_ref(): can't locate ID"
+                || last_desc == "H5I__dec_ref(): can't locate ID",
+            "unexpected description: {last_desc}"
+        );
+        let last_detail = stack[stack.len() - 1].detail().unwrap();
+        assert!(
+            last_detail.contains("H5I_dec_ref()") || last_detail.contains("H5I__dec_ref()"),
+            "unexpected detail: {last_detail}"
+        );
+        assert!(last_detail.contains("can't locate ID"), "unexpected detail: {last_detail}");
 
         let empty_stack = ExpandedErrorStack::new();
         assert!(empty_stack.is_empty());

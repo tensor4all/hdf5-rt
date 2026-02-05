@@ -3,14 +3,12 @@ use crate::Location;
 
 mod legacy;
 
-#[cfg(feature = "1.12.1")]
 mod standard;
 
 use crate::sys::h5o::H5O_type_t;
 use crate::sys::h5r::H5R_type_t;
 
 pub use legacy::ObjectReference1;
-#[cfg(feature = "1.12.1")]
 pub use standard::ObjectReference2;
 
 mod private {
@@ -51,10 +49,6 @@ impl ReferencedObject {
             H5O_TYPE_GROUP => ReferencedObject::Group(Group::from_id(object_id)?),
             H5O_TYPE_DATASET => ReferencedObject::Dataset(Dataset::from_id(object_id)?),
             H5O_TYPE_NAMED_DATATYPE => ReferencedObject::Datatype(Datatype::from_id(object_id)?),
-            #[cfg(any(
-                feature = "1.12.0",
-                all(feature = "runtime-loading", not(feature = "link"))
-            ))]
             H5O_TYPE_MAP => fail!("Can not create object from a map"),
             H5O_TYPE_UNKNOWN => fail!("Unknown datatype"),
             H5O_TYPE_NTYPES => fail!("hdf5 should not produce this type"),
