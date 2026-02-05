@@ -105,13 +105,11 @@ impl Dataset {
         self.dcpl().map_or(Layout::default(), |pl| pl.layout())
     }
 
-    #[cfg(feature = "1.10.5")]
     /// Returns the number of chunks if the dataset is chunked.
     pub fn num_chunks(&self) -> Option<usize> {
         crate::hl::chunks::get_num_chunks(self)
     }
 
-    #[cfg(feature = "1.10.5")]
     /// Retrieves the chunk information for the chunk specified by its index.
     pub fn chunk_info(&self, index: usize) -> Option<crate::dataset::ChunkInfo> {
         crate::hl::chunks::chunk_info(self, index)
@@ -616,7 +614,6 @@ impl DatasetBuilderInner {
         self.with_dapl(|pl| pl.chunk_cache(nslots, nbytes, w0));
     }
 
-    #[cfg(feature = "1.8.17")]
     pub fn efile_prefix(&mut self, prefix: &str) {
         self.with_dapl(|pl| pl.efile_prefix(prefix));
     }
@@ -1001,7 +998,7 @@ macro_rules! impl_builder_methods {
         impl_builder!(DatasetAccess: access/dapl);
 
         impl_builder!(DatasetAccess: chunk_cache(nslots: usize, nbytes: usize, w0: f64));
-        impl_builder!(#[cfg(feature = "1.8.17")] DatasetAccess: efile_prefix(prefix: &str));
+        impl_builder!(DatasetAccess: efile_prefix(prefix: &str));
         impl_builder!(#[cfg(all(feature = "1.10.0", feature = "link"))] DatasetAccess: virtual_view(view: VirtualView));
         impl_builder!(#[cfg(all(feature = "1.10.0", feature = "link"))] DatasetAccess: virtual_printf_gap(gap_size: usize));
         impl_builder!(

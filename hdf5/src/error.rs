@@ -8,8 +8,6 @@ use std::ptr::{self, addr_of_mut};
 
 use ndarray::ShapeError;
 
-#[cfg(not(feature = "1.10.0"))]
-use crate::sys::h5::hssize_t;
 use crate::sys::h5e::{
     H5E_auto2_t, H5E_error2_t, H5Eget_current_stack, H5Eget_msg, H5Eprint2, H5Eset_auto2, H5Ewalk2,
     H5E_DEFAULT, H5E_WALK_DOWNWARD,
@@ -320,15 +318,7 @@ impl H5ErrorCode for herr_t {
     }
 }
 
-#[cfg(feature = "1.10.0")]
 impl H5ErrorCode for hid_t {
-    fn is_err_code(value: Self) -> bool {
-        value < 0
-    }
-}
-
-#[cfg(not(feature = "1.10.0"))]
-impl H5ErrorCode for hssize_t {
     fn is_err_code(value: Self) -> bool {
         value < 0
     }

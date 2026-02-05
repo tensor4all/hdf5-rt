@@ -12,7 +12,6 @@ use crate::sys::h5s::{
     H5Sget_simple_extent_ndims, H5Sselect_all, H5Sselect_elements, H5Sselect_hyperslab,
     H5Sselect_none, H5S_SELECT_SET, H5S_UNLIMITED,
 };
-#[cfg(feature = "1.10.0")]
 use crate::sys::h5s::{H5Sget_regular_hyperslab, H5Sis_regular_hyperslab};
 
 use crate::hl::extents::Ix;
@@ -45,36 +44,30 @@ unsafe fn set_points_selection(space_id: hid_t, coords: ArrayView2<Ix>) -> Resul
     Ok(())
 }
 
-#[cfg_attr(not(feature = "1.10.0"), allow(unused))]
 unsafe fn get_regular_hyperslab(space_id: hid_t) -> Result<Option<RawHyperslab>> {
-    #[cfg(feature = "1.10.0")]
-    {
-        if h5check(H5Sis_regular_hyperslab(space_id))? <= 0 {
-            return Ok(None);
-        }
-        let ndim = h5check(H5Sget_simple_extent_ndims(space_id))? as usize;
-        let (mut start, mut stride, mut count, mut block) =
-            (vec![0; ndim], vec![0; ndim], vec![0; ndim], vec![0; ndim]);
-        h5check(H5Sget_regular_hyperslab(
-            space_id,
-            start.as_mut_ptr(),
-            stride.as_mut_ptr(),
-            count.as_mut_ptr(),
-            block.as_mut_ptr(),
-        ))?;
-        let mut hyper = vec![];
-        for i in 0..ndim {
-            hyper.push(RawSlice {
-                start: start[i] as _,
-                step: stride[i] as _,
-                count: if count[i] == H5S_UNLIMITED { None } else { Some(count[i] as _) },
-                block: block[i] as _,
-            });
-        }
-        return Ok(Some(hyper.into()));
+    if h5check(H5Sis_regular_hyperslab(space_id))? <= 0 {
+        return Ok(None);
     }
-    #[allow(unreachable_code)]
-    Ok(None)
+    let ndim = h5check(H5Sget_simple_extent_ndims(space_id))? as usize;
+    let (mut start, mut stride, mut count, mut block) =
+        (vec![0; ndim], vec![0; ndim], vec![0; ndim], vec![0; ndim]);
+    h5check(H5Sget_regular_hyperslab(
+        space_id,
+        start.as_mut_ptr(),
+        stride.as_mut_ptr(),
+        count.as_mut_ptr(),
+        block.as_mut_ptr(),
+    ))?;
+    let mut hyper = vec![];
+    for i in 0..ndim {
+        hyper.push(RawSlice {
+            start: start[i] as _,
+            step: stride[i] as _,
+            count: if count[i] == H5S_UNLIMITED { None } else { Some(count[i] as _) },
+            block: block[i] as _,
+        });
+    }
+    Ok(Some(hyper.into()))
 }
 
 unsafe fn set_regular_hyperslab(space_id: hid_t, hyper: &RawHyperslab) -> Result<()> {
@@ -1622,8 +1615,6 @@ mod test {
         check(&[1, 2], RawSelection::All, None)?;
         check(&[1, 2], RawSelection::Points(arr2(&[[0, 1], [0, 0]])), None)?;
 
-        let exp =
-            if cfg!(feature = "1.10.0") { None } else { Some(RawSelection::ComplexHyperslab) };
         check(
             &[8, 9, 10, 11],
             vec![
@@ -1633,7 +1624,7 @@ mod test {
                 RawSlice::new(1, 2, Some(4), 1),
             ]
             .into(),
-            exp,
+            None,
         )?;
 
         assert_err!(

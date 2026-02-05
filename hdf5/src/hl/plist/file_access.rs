@@ -56,9 +56,7 @@ use crate::sys::h5p::{
     H5Pget_all_coll_metadata_ops, H5Pget_coll_metadata_write, H5Pset_all_coll_metadata_ops,
     H5Pset_coll_metadata_write,
 };
-#[cfg(feature = "1.8.13")]
 use crate::sys::h5p::{H5Pget_core_write_tracking, H5Pset_core_write_tracking};
-#[cfg(feature = "1.8.7")]
 use crate::sys::h5p::{H5Pget_elink_file_cache_size, H5Pset_elink_file_cache_size};
 #[cfg(all(feature = "1.10.1", feature = "link"))]
 use crate::sys::h5p::{
@@ -118,7 +116,6 @@ impl Debug for FileAccess {
         formatter.field("small_data_block_size", &self.small_data_block_size());
         #[cfg(all(feature = "1.10.2", feature = "link"))]
         formatter.field("libver_bounds", &self.libver_bounds());
-        #[cfg(feature = "1.8.7")]
         formatter.field("elink_file_cache_size", &self.elink_file_cache_size());
         formatter.field("meta_block_size", &self.meta_block_size());
         #[cfg(all(feature = "1.10.1", feature = "link"))]
@@ -172,18 +169,12 @@ pub struct CoreDriver {
     /// Whether to write the file contents to disk when the file is closed.
     pub filebacked: bool,
     /// Size, in bytes, of write aggregation pages. Setting to 1 enables tracking with no paging.
-    #[cfg(feature = "1.8.13")]
     pub write_tracking: usize,
 }
 
 impl Default for CoreDriver {
     fn default() -> Self {
-        Self {
-            increment: 1024 * 1024,
-            filebacked: false,
-            #[cfg(feature = "1.8.13")]
-            write_tracking: 0,
-        }
+        Self { increment: 1024 * 1024, filebacked: false, write_tracking: 0 }
     }
 }
 
@@ -1110,12 +1101,10 @@ pub use self::libver::*;
 pub struct FileAccessBuilder {
     file_driver: Option<FileDriver>,
     log_options: LogOptions,
-    #[cfg(feature = "1.8.13")]
     write_tracking: Option<usize>,
     fclose_degree: Option<FileCloseDegree>,
     alignment: Option<Alignment>,
     chunk_cache: Option<ChunkCache>,
-    #[cfg(feature = "1.8.7")]
     elink_file_cache_size: Option<u32>,
     meta_block_size: Option<u64>,
     #[cfg(all(feature = "1.10.1", feature = "link"))]
@@ -1163,10 +1152,7 @@ impl FileAccessBuilder {
             let v = plist.get_libver_bounds()?;
             builder.libver_bounds(v.low, v.high);
         }
-        #[cfg(feature = "1.8.7")]
-        {
-            builder.elink_file_cache_size(plist.get_elink_file_cache_size()?);
-        }
+        builder.elink_file_cache_size(plist.get_elink_file_cache_size()?);
         builder.meta_block_size(plist.get_meta_block_size()?);
         #[cfg(all(feature = "1.10.1", feature = "link"))]
         {
@@ -1188,11 +1174,8 @@ impl FileAccessBuilder {
             builder.coll_metadata_write(plist.get_coll_metadata_write()?);
         }
         builder.mdc_config(&plist.get_mdc_config()?);
-        #[cfg(feature = "1.8.13")]
-        {
-            if let FileDriver::Core(ref drv) = drv {
-                builder.write_tracking(drv.write_tracking);
-            }
+        if let FileDriver::Core(ref drv) = drv {
+            builder.write_tracking(drv.write_tracking);
         }
         Ok(builder)
     }
@@ -1220,7 +1203,6 @@ impl FileAccessBuilder {
     }
 
     /// Sets the number of files that can be held open in an external link open file cache.
-    #[cfg(feature = "1.8.7")]
     pub fn elink_file_cache_size(&mut self, efc_size: u32) -> &mut Self {
         self.elink_file_cache_size = Some(efc_size);
         self
@@ -1404,7 +1386,6 @@ impl FileAccessBuilder {
     }
 
     /// Sets the write tracking page size for the Core file driver.
-    #[cfg(feature = "1.8.13")]
     pub fn write_tracking(&mut self, page_size: usize) -> &mut Self {
         self.write_tracking = Some(page_size);
         self
@@ -1491,15 +1472,12 @@ impl FileAccessBuilder {
 
     fn set_core(&self, id: hid_t, drv: &CoreDriver) -> Result<()> {
         h5try!(H5Pset_fapl_core(id, drv.increment as _, hbool_t::from(drv.filebacked)));
-        #[cfg(feature = "1.8.13")]
-        {
-            if let Some(page_size) = self.write_tracking {
-                h5try!(H5Pset_core_write_tracking(
-                    id,
-                    hbool_t::from(page_size > 0),
-                    page_size.max(1) as _
-                ));
-            }
+        if let Some(page_size) = self.write_tracking {
+            h5try!(H5Pset_core_write_tracking(
+                id,
+                hbool_t::from(page_size > 0),
+                page_size.max(1) as _
+            ));
         }
         Ok(())
     }
@@ -1645,11 +1623,8 @@ impl FileAccessBuilder {
                 h5try!(H5Pset_libver_bounds(id, v.low.into(), v.high.into()));
             }
         }
-        #[cfg(feature = "1.8.7")]
-        {
-            if let Some(v) = self.elink_file_cache_size {
-                h5try!(H5Pset_elink_file_cache_size(id, v as _));
-            }
+        if let Some(v) = self.elink_file_cache_size {
+            h5try!(H5Pset_elink_file_cache_size(id, v as _));
         }
         if let Some(v) = self.meta_block_size {
             h5try!(H5Pset_meta_block_size(id, v as _));
@@ -1750,20 +1725,17 @@ impl FileAccess {
         h5try!(H5Pget_fapl_core(self.id(), addr_of_mut!(increment), addr_of_mut!(filebacked)));
         drv.increment = increment as _;
         drv.filebacked = filebacked > 0;
-        #[cfg(feature = "1.8.13")]
-        {
-            let mut is_enabled: hbool_t = 0;
-            let mut page_size: size_t = 0;
-            h5try!(H5Pget_core_write_tracking(
-                self.id(),
-                addr_of_mut!(is_enabled),
-                addr_of_mut!(page_size),
-            ));
-            if is_enabled > 0 {
-                drv.write_tracking = page_size;
-            } else {
-                drv.write_tracking = 0;
-            }
+        let mut is_enabled: hbool_t = 0;
+        let mut page_size: size_t = 0;
+        h5try!(H5Pget_core_write_tracking(
+            self.id(),
+            addr_of_mut!(is_enabled),
+            addr_of_mut!(page_size),
+        ));
+        if is_enabled > 0 {
+            drv.write_tracking = page_size;
+        } else {
+            drv.write_tracking = 0;
         }
         Ok(drv)
     }
@@ -1912,13 +1884,11 @@ impl FileAccess {
         self.get_chunk_cache().unwrap_or_else(|_| ChunkCache::default())
     }
 
-    #[cfg(feature = "1.8.7")]
     #[doc(hidden)]
     pub fn get_elink_file_cache_size(&self) -> Result<u32> {
         h5get!(H5Pget_elink_file_cache_size(self.id()): c_uint).map(|x| x as _)
     }
 
-    #[cfg(feature = "1.8.7")]
     pub fn elink_file_cache_size(&self) -> u32 {
         self.get_elink_file_cache_size().unwrap_or(0)
     }
