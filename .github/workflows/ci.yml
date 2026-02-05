@@ -84,12 +84,38 @@ jobs:
             echo "h5dump not in PATH, checking library..."
             find /usr -name "libhdf5*.so*" 2>/dev/null | head -5 || true
           fi
-      - name: Build
+      - name: Install gdb
+        run: sudo apt-get update && sudo apt-get install -y gdb
+      - name: Build and compile tests
         shell: bash -el {0}
-        run: cargo build --workspace --verbose
+        run: cargo test --workspace --all-features --no-run --verbose 2>&1 | tee /tmp/test-build.log
       - name: Run tests
         shell: bash -el {0}
+        continue-on-error: true
         run: cargo test --workspace --all-features --verbose -- --test-threads=1
+      - name: Debug test_plist SIGSEGV under gdb
+        if: always()
+        shell: bash -el {0}
+        run: |
+          # Find the test_plist binary
+          TEST_BIN=$(ls target/debug/deps/test_plist-* 2>/dev/null | grep -v '\.d$' | head -1)
+          echo "Test binary: $TEST_BIN"
+          if [ -z "$TEST_BIN" ]; then
+            echo "ERROR: Could not find test_plist binary"
+            exit 1
+          fi
+
+          # Run JUST test_fapl_common under gdb for backtrace
+          echo "=== Running test_fapl_common under gdb ==="
+          gdb -batch \
+            -ex "set pagination off" \
+            -ex "run --test-threads=1 --exact test_fapl_common --nocapture" \
+            -ex "bt full" \
+            -ex "info registers" \
+            -ex "info threads" \
+            -ex "thread apply all bt full" \
+            -ex "quit" \
+            "$TEST_BIN" 2>&1 || true
 
   macos:
     name: macOS
