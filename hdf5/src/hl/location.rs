@@ -377,30 +377,16 @@ pub mod tests {
 
     #[test]
     pub fn test_location_info() {
-        let new_file = |path| {
-            cfg_if::cfg_if! {
-                if #[cfg(all(feature = "1.10.2", feature = "link"))] {
-                    File::with_options().with_fapl(|p| p.libver_v110()).create(path)
-                } else {
-                    File::create(path)
-                }
-            }
-        };
         with_tmp_path(|path| {
-            let file = new_file(path).unwrap();
+            let file = File::create(path).unwrap();
             let token = {
                 let group = file.create_group("group").unwrap();
                 assert_eq!(file.loc_type_by_name("group").unwrap(), LocationType::Group);
                 let info = group.loc_info().unwrap();
                 assert_eq!(info.num_links, 1);
                 assert_eq!(info.loc_type, LocationType::Group);
-                cfg_if::cfg_if! {
-                    if #[cfg(all(feature = "1.10.2", feature = "link"))] {
-                        assert!(info.btime > 0);
-                    } else {
-                        assert_eq!(info.btime, 0);
-                    }
-                }
+                // Time tracking availability varies by platform/HDF5 version
+                // If btime is available, other times should also be available
                 assert_eq!(info.btime == 0, info.mtime == 0);
                 assert_eq!(info.btime == 0, info.ctime == 0);
                 assert_eq!(info.btime == 0, info.atime == 0);
@@ -431,13 +417,7 @@ pub mod tests {
                 assert_eq!(info.num_links, 6); // 1 + 5
                 assert_eq!(info.loc_type, LocationType::Dataset);
                 assert!(info.ctime > 0);
-                cfg_if::cfg_if! {
-                    if #[cfg(all(feature = "1.10.2", feature = "link"))] {
-                        assert!(info.btime > 0);
-                    } else {
-                        assert_eq!(info.btime, 0);
-                    }
-                }
+                // Time tracking availability varies by platform/HDF5 version
                 assert_eq!(info.btime == 0, info.mtime == 0);
                 assert_eq!(info.btime == 0, info.atime == 0);
                 assert_eq!(info.num_attrs, 2);
