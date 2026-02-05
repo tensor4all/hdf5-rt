@@ -567,6 +567,21 @@ pub struct H5O_info2_t {
     pub num_attrs: hsize_t,
 }
 
+/// Object info structure for HDF5 < 1.12 (uses haddr_t instead of token)
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct H5O_info1_t {
+    pub fileno: c_ulong,
+    pub addr: haddr_t,
+    pub type_: H5O_type_t,
+    pub rc: c_uint,
+    pub atime: i64,
+    pub mtime: i64,
+    pub ctime: i64,
+    pub btime: i64,
+    pub num_attrs: hsize_t,
+}
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct H5O_token_t {
@@ -2065,5 +2080,19 @@ mod tests {
             "Minor version {} should be between 10 and 20",
             version.minor
         );
+    }
+
+    #[test]
+    fn test_h5o_info1_t_type() {
+        // H5O_info1_t should be a valid type with reasonable size
+        let size = std::mem::size_of::<H5O_info1_t>();
+        assert!(size > 0, "H5O_info1_t should have non-zero size");
+
+        // Should be able to create a zeroed instance
+        let info: H5O_info1_t = unsafe { std::mem::zeroed() };
+        assert_eq!(info.fileno, 0);
+        assert_eq!(info.addr, 0);
+        assert_eq!(info.rc, 0);
+        assert_eq!(info.num_attrs, 0);
     }
 }
