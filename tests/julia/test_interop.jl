@@ -80,9 +80,9 @@ function create_julia_test_file(filepath::String)
     println("Creating HDF5 file with Julia: $filepath")
 
     h5open(filepath, "w") do file
-        # Write scalar attribute to root group (variable-length string)
-        # Use HDF5.API to create variable-length string attribute
-        HDF5.write_attribute(file, "test_attr", "hello from julia/python")
+        # Write scalar attribute to root group
+        # Use attrs() interface which works across HDF5.jl versions
+        attrs(file)["test_attr"] = "hello from julia/python"
 
         # Write 1D integer dataset
         file["integers"] = Int64[1, 2, 3, 4, 5]
@@ -106,7 +106,8 @@ function verify_rust_test_file(filepath::String)
 
     h5open(filepath, "r") do file
         # Read and verify attribute
-        attr_value = HDF5.read_attribute(file, "test_attr")
+        # Use attrs() interface which works across HDF5.jl versions
+        attr_value = read(attrs(file), "test_attr")
         @test attr_value == "hello from rust"
         println("  Attribute 'test_attr': $attr_value")
 
