@@ -43,7 +43,7 @@ fn main() -> ExitCode {
 
     // Initialize HDF5 with the provided library path
     let lib_path = args.hdf5_lib.to_string_lossy();
-    if let Err(e) = hdf5::sys::init(Some(&lib_path)) {
+    if let Err(e) = tensor4all_hdf5_ffi::sys::init(Some(&lib_path)) {
         eprintln!("Failed to initialize HDF5: {}", e);
         return ExitCode::FAILURE;
     }
@@ -67,9 +67,9 @@ fn main() -> ExitCode {
     }
 }
 
-fn read_test_file(path: &PathBuf) -> hdf5::Result<()> {
-    use hdf5::types::{FixedUnicode, VarLenUnicode};
-    use hdf5::File;
+fn read_test_file(path: &PathBuf) -> tensor4all_hdf5_ffi::Result<()> {
+    use tensor4all_hdf5_ffi::types::{FixedUnicode, VarLenUnicode};
+    use tensor4all_hdf5_ffi::File;
 
     let file = File::open(path)?;
 
@@ -101,7 +101,7 @@ fn read_test_file(path: &PathBuf) -> hdf5::Result<()> {
 
     // Read string dataset (as variable-length unicode strings)
     let ds_str = file.dataset("strings")?;
-    let str_data: Vec<hdf5::types::VarLenUnicode> = ds_str.read_raw()?;
+    let str_data: Vec<tensor4all_hdf5_ffi::types::VarLenUnicode> = ds_str.read_raw()?;
     let str_values: Vec<&str> = str_data.iter().map(|s| s.as_str()).collect();
     assert_eq!(str_values, vec!["foo", "bar", "baz"], "String dataset mismatch");
     println!("  Dataset 'strings': {:?}", str_values);
@@ -109,10 +109,10 @@ fn read_test_file(path: &PathBuf) -> hdf5::Result<()> {
     Ok(())
 }
 
-fn write_test_file(path: &PathBuf) -> hdf5::Result<()> {
-    use hdf5::types::VarLenUnicode;
-    use hdf5::File;
+fn write_test_file(path: &PathBuf) -> tensor4all_hdf5_ffi::Result<()> {
     use std::str::FromStr;
+    use tensor4all_hdf5_ffi::types::VarLenUnicode;
+    use tensor4all_hdf5_ffi::File;
 
     let file = File::create(path)?;
 

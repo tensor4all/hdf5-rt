@@ -11,8 +11,8 @@ authors = [
 ]
 keywords = ["hdf5"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/shinaoka/tensor4all-hdf5-ffi"
-homepage = "https://github.com/shinaoka/tensor4all-hdf5-ffi"
+repository = "https://github.com/tensor4all/tensor4all-hdf5-ffi"
+homepage = "https://github.com/tensor4all/tensor4all-hdf5-ffi"
 edition = "2021"
 
 [workspace.dependencies]
@@ -24,8 +24,10 @@ libloading = "0.9"
 num-complex = { version = "0.4", default-features = false }
 
 # internal
-hdf5 = { path = "hdf5" }
-hdf5-types = { path = "hdf5-types" }
+tensor4all-hdf5-ffi = { path = "hdf5" }
+tensor4all-hdf5-types = { path = "hdf5-types" }
+# alias for internal use (to avoid changing source code)
+hdf5-types = { path = "hdf5-types", package = "tensor4all-hdf5-types" }
 
 # Use hdf5-metno-sys from crates.io
 hdf5-sys = { package = "hdf5-metno-sys", version = "0.11" }
