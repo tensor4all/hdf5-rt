@@ -10,10 +10,10 @@ use crate::hl;
 #[cfg(feature = "blosc")]
 use crate::hl::filters::{Blosc, BloscShuffle};
 use crate::hl::filters::{Filter, SZip, ScaleOffset};
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 use crate::hl::plist::dataset_access::VirtualView;
 use crate::hl::plist::dataset_access::{DatasetAccess, DatasetAccessBuilder};
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 use crate::hl::plist::dataset_create::ChunkOpts;
 use crate::hl::plist::dataset_create::{
     AllocTime, AttrCreationOrder, DatasetCreate, DatasetCreateBuilder, FillTime, Layout,
@@ -25,7 +25,7 @@ use crate::sys::h5d::{
     H5Dcreate2, H5Dcreate_anon, H5Dget_access_plist, H5Dget_create_plist, H5Dget_offset,
     H5Dset_extent,
 };
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 use crate::sys::h5d::{H5Dflush, H5Drefresh};
 use crate::sys::h5l::H5Ldelete;
 use crate::sys::h5p::H5P_DEFAULT;
@@ -123,7 +123,7 @@ impl Dataset {
     }
 
     /// Visit all chunks
-    #[cfg(feature = "1.14.0")]
+    #[cfg(all(feature = "1.14.0", feature = "link"))]
     pub fn chunks_visit<F>(&self, callback: F) -> Result<()>
     where
         F: for<'a> FnMut(crate::dataset::ChunkInfoRef<'a>) -> i32,
@@ -161,7 +161,7 @@ impl Dataset {
     }
 
     /// Flush the dataset metadata from the metadata cache to the file
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn flush(&self) -> Result<()> {
         let id = self.id();
         h5call!(H5Dflush(id))?;
@@ -169,7 +169,7 @@ impl Dataset {
     }
 
     /// Refresh metadata items assosicated with the dataset
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn refresh(&self) -> Result<()> {
         let id = self.id();
         h5call!(H5Drefresh(id))?;
@@ -621,12 +621,12 @@ impl DatasetBuilderInner {
         self.with_dapl(|pl| pl.efile_prefix(prefix));
     }
 
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn virtual_view(&mut self, view: VirtualView) {
         self.with_dapl(|pl| pl.virtual_view(view));
     }
 
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn virtual_printf_gap(&mut self, gap_size: usize) {
         self.with_dapl(|pl| pl.virtual_printf_gap(gap_size));
     }
@@ -823,7 +823,7 @@ impl DatasetBuilderInner {
         self.with_dcpl(|pl| pl.layout(layout));
     }
 
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn chunk_opts(&mut self, opts: ChunkOpts) {
         self.with_dcpl(|pl| pl.chunk_opts(opts));
     }
@@ -832,7 +832,7 @@ impl DatasetBuilderInner {
         self.with_dcpl(|pl| pl.external(name, offset, size));
     }
 
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn virtual_map<F, D, E1, S1, E2, S2>(
         &mut self,
         src_filename: F,
@@ -1002,8 +1002,8 @@ macro_rules! impl_builder_methods {
 
         impl_builder!(DatasetAccess: chunk_cache(nslots: usize, nbytes: usize, w0: f64));
         impl_builder!(#[cfg(feature = "1.8.17")] DatasetAccess: efile_prefix(prefix: &str));
-        impl_builder!(#[cfg(feature = "1.10.0")] DatasetAccess: virtual_view(view: VirtualView));
-        impl_builder!(#[cfg(feature = "1.10.0")] DatasetAccess: virtual_printf_gap(gap_size: usize));
+        impl_builder!(#[cfg(all(feature = "1.10.0", feature = "link"))] DatasetAccess: virtual_view(view: VirtualView));
+        impl_builder!(#[cfg(all(feature = "1.10.0", feature = "link"))] DatasetAccess: virtual_printf_gap(gap_size: usize));
         impl_builder!(
             #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
             DatasetAccess: all_coll_metadata_ops(is_collective: bool)
@@ -1076,10 +1076,10 @@ macro_rules! impl_builder_methods {
         impl_builder!(*: chunk_min_kb(size: usize));
         impl_builder!(DatasetCreate: no_chunk());
         impl_builder!(DatasetCreate: layout(layout: Layout));
-        impl_builder!(#[cfg(feature = "1.10.0")] DatasetCreate: chunk_opts(opts: ChunkOpts));
+        impl_builder!(#[cfg(all(feature = "1.10.0", feature = "link"))] DatasetCreate: chunk_opts(opts: ChunkOpts));
         impl_builder!(DatasetCreate: external(name: &str, offset: usize, size: usize));
         impl_builder!(
-            #[cfg(feature = "1.10.0")]
+            #[cfg(all(feature = "1.10.0", feature = "link"))]
             DatasetCreate: virtual_map<
                 F: AsRef<str>, D: AsRef<str>,
                 E1: Into<Extents>, S1: Into<Selection>, E2: Into<Extents>, S2: Into<Selection>

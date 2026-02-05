@@ -4,7 +4,7 @@ use std::fmt::{self, Debug};
 use std::ops::Deref;
 use std::ptr::{self, addr_of_mut};
 
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 use bitflags::bitflags;
 
 use crate::sys::h5d::{H5D_alloc_time_t, H5D_fill_time_t, H5D_fill_value_t, H5D_layout_t};
@@ -19,7 +19,7 @@ use crate::sys::h5p::{
 };
 use crate::sys::h5t::H5Tget_class;
 use crate::sys::h5z::H5Z_filter_t;
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 use crate::sys::{
     h5d::H5D_CHUNK_DONT_FILTER_PARTIAL_CHUNKS,
     h5p::{
@@ -74,10 +74,10 @@ impl Debug for DatasetCreate {
         formatter.field("fill_value", &self.fill_value_defined());
         formatter.field("chunk", &self.chunk());
         formatter.field("layout", &self.layout());
-        #[cfg(feature = "1.10.0")]
+        #[cfg(all(feature = "1.10.0", feature = "link"))]
         formatter.field("chunk_opts", &self.chunk_opts());
         formatter.field("external", &self.external());
-        #[cfg(feature = "1.10.0")]
+        #[cfg(all(feature = "1.10.0", feature = "link"))]
         formatter.field("virtual_map", &self.virtual_map());
         formatter.field("obj_track_times", &self.obj_track_times());
         formatter.field("attr_phase_change", &self.attr_phase_change());
@@ -118,7 +118,7 @@ pub enum Layout {
     /// Raw data is stored in separate chunks in the file.
     Chunked,
     /// Raw data is drawn from multiple datasets in different files.
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     Virtual,
 }
 
@@ -133,7 +133,7 @@ impl From<H5D_layout_t> for Layout {
         match layout {
             H5D_layout_t::H5D_COMPACT => Self::Compact,
             H5D_layout_t::H5D_CHUNKED => Self::Chunked,
-            #[cfg(feature = "1.10.0")]
+            #[cfg(all(feature = "1.10.0", feature = "link"))]
             H5D_layout_t::H5D_VIRTUAL => Self::Virtual,
             _ => Self::Contiguous,
         }
@@ -145,14 +145,14 @@ impl From<Layout> for H5D_layout_t {
         match layout {
             Layout::Compact => Self::H5D_COMPACT,
             Layout::Chunked => Self::H5D_CHUNKED,
-            #[cfg(feature = "1.10.0")]
+            #[cfg(all(feature = "1.10.0", feature = "link"))]
             Layout::Virtual => Self::H5D_VIRTUAL,
             Layout::Contiguous => Self::H5D_CONTIGUOUS,
         }
     }
 }
 
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 bitflags! {
     /// Edge chunk option flags.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -162,7 +162,7 @@ bitflags! {
     }
 }
 
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 impl Default for ChunkOpts {
     fn default() -> Self {
         Self::DONT_FILTER_PARTIAL_CHUNKS
@@ -287,7 +287,7 @@ pub struct ExternalFile {
 }
 
 /// Properties of a mapping between virtual and source datasets.
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VirtualMapping {
     /// The name of the HDF5 file containing the source dataset.
@@ -304,7 +304,7 @@ pub struct VirtualMapping {
     pub vds_selection: Selection,
 }
 
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 impl VirtualMapping {
     /// Constructs a `VirtualMapping` with the given parameters.
     pub fn new<F, D, E1, S1, E2, S2>(
@@ -344,10 +344,10 @@ pub struct DatasetCreateBuilder {
     fill_value: Option<OwnedDynValue>,
     chunk: Option<Vec<usize>>,
     layout: Option<Layout>,
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     chunk_opts: Option<ChunkOpts>,
     external: Vec<ExternalFile>,
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     virtual_map: Vec<VirtualMapping>,
     obj_track_times: Option<bool>,
     attr_phase_change: Option<AttrPhaseChange>,
@@ -374,7 +374,7 @@ impl DatasetCreateBuilder {
         }
         let layout = plist.get_layout()?;
         builder.layout(layout);
-        #[cfg(feature = "1.10.0")]
+        #[cfg(all(feature = "1.10.0", feature = "link"))]
         {
             if let Some(v) = plist.get_chunk_opts()? {
                 builder.chunk_opts(v);
@@ -625,7 +625,7 @@ impl DatasetCreateBuilder {
     }
 
     /// Sets the dataset's edge chunk options.
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn chunk_opts(&mut self, opts: ChunkOpts) -> &mut Self {
         self.chunk_opts = Some(opts);
         self
@@ -638,7 +638,7 @@ impl DatasetCreateBuilder {
     }
 
     /// Adds a mapping between virtual and source datasets.
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn virtual_map<F, D, E1, S1, E2, S2>(
         &mut self,
         src_filename: F,
@@ -710,7 +710,7 @@ impl DatasetCreateBuilder {
             let v = v.iter().map(|&x| x as _).collect::<Vec<_>>();
             h5try!(H5Pset_chunk(id, v.len() as _, v.as_ptr()));
         }
-        #[cfg(feature = "1.10.0")]
+        #[cfg(all(feature = "1.10.0", feature = "link"))]
         {
             if let Some(v) = self.chunk_opts {
                 h5try!(H5Pset_chunk_opts(id, v.bits() as _));
@@ -902,7 +902,7 @@ impl DatasetCreate {
         self.get_layout().unwrap_or_default()
     }
 
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     #[doc(hidden)]
     pub fn get_chunk_opts(&self) -> Result<Option<ChunkOpts>> {
         if self.get_layout()? == Layout::Chunked {
@@ -914,7 +914,7 @@ impl DatasetCreate {
     }
 
     /// Returns the edge chunk option setting, or `None` if the dataset is not chunked.
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn chunk_opts(&self) -> Option<ChunkOpts> {
         self.get_chunk_opts().unwrap_or_default()
     }
@@ -953,7 +953,7 @@ impl DatasetCreate {
         self.get_external().unwrap_or_default()
     }
 
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     #[doc(hidden)]
     pub fn get_virtual_map(&self) -> Result<Vec<VirtualMapping>> {
         sync(|| unsafe {
@@ -990,7 +990,7 @@ impl DatasetCreate {
     }
 
     /// Returns a vector of virtual mapping specifiers for the dataset.
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn virtual_map(&self) -> Vec<VirtualMapping> {
         self.get_virtual_map().unwrap_or_default()
     }

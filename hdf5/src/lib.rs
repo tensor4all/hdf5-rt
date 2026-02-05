@@ -81,7 +81,7 @@ mod export {
     pub mod dataset {
         #[cfg(feature = "1.10.5")]
         pub use crate::hl::chunks::ChunkInfo;
-        #[cfg(feature = "1.14.0")]
+        #[cfg(all(feature = "1.14.0", feature = "link"))]
         pub use crate::hl::chunks::ChunkInfoRef;
         pub use crate::hl::dataset::{Chunk, Dataset, DatasetBuilder};
         pub use crate::hl::plist::dataset_access::*;

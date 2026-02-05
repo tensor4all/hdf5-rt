@@ -13,7 +13,7 @@ use crate::sys::h5p::{H5Pcreate, H5Pget_chunk_cache, H5Pset_chunk_cache};
 use crate::sys::h5p::{H5Pget_all_coll_metadata_ops, H5Pset_all_coll_metadata_ops};
 #[cfg(feature = "1.8.17")]
 use crate::sys::h5p::{H5Pget_efile_prefix, H5Pset_efile_prefix};
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 use crate::sys::{
     h5d::H5D_vds_view_t,
     h5p::{
@@ -58,7 +58,7 @@ impl Debug for DatasetAccess {
         formatter.field("chunk_cache", &self.chunk_cache());
         #[cfg(feature = "1.8.17")]
         formatter.field("efile_prefix", &self.efile_prefix());
-        #[cfg(feature = "1.10.0")]
+        #[cfg(all(feature = "1.10.0", feature = "link"))]
         {
             formatter.field("virtual_view", &self.virtual_view());
             formatter.field("virtual_printf_gap", &self.virtual_printf_gap());
@@ -92,7 +92,7 @@ impl Clone for DatasetAccess {
 }
 
 /// Options for including or excluding missing mapped elements in a virtual dataset view.
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VirtualView {
     /// Include all data before the first missing mapped data.
@@ -101,14 +101,14 @@ pub enum VirtualView {
     LastAvailable,
 }
 
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 impl Default for VirtualView {
     fn default() -> Self {
         Self::LastAvailable
     }
 }
 
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 impl From<H5D_vds_view_t> for VirtualView {
     fn from(view: H5D_vds_view_t) -> Self {
         match view {
@@ -118,7 +118,7 @@ impl From<H5D_vds_view_t> for VirtualView {
     }
 }
 
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 impl From<VirtualView> for H5D_vds_view_t {
     fn from(v: VirtualView) -> Self {
         match v {
@@ -134,9 +134,9 @@ pub struct DatasetAccessBuilder {
     chunk_cache: Option<ChunkCache>,
     #[cfg(feature = "1.8.17")]
     efile_prefix: Option<String>,
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     virtual_view: Option<VirtualView>,
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     virtual_printf_gap: Option<usize>,
     #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
     all_coll_metadata_ops: Option<bool>,
@@ -158,7 +158,7 @@ impl DatasetAccessBuilder {
             let v = plist.get_efile_prefix()?;
             builder.efile_prefix(&v);
         }
-        #[cfg(feature = "1.10.0")]
+        #[cfg(all(feature = "1.10.0", feature = "link"))]
         {
             builder.virtual_view(plist.get_virtual_view()?);
             builder.virtual_printf_gap(plist.get_virtual_printf_gap()?);
@@ -182,7 +182,7 @@ impl DatasetAccessBuilder {
     }
 
     /// Sets the [`VirtualView`] options.
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn virtual_view(&mut self, view: VirtualView) -> &mut Self {
         self.virtual_view = Some(view);
         self
@@ -190,7 +190,7 @@ impl DatasetAccessBuilder {
 
     /// Sets the maximum number of files/datasets allowed to be missing when determining the extent
     /// of an unlimited virtual dataset with printf-style mappings.
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn virtual_printf_gap(&mut self, gap_size: usize) -> &mut Self {
         self.virtual_printf_gap = Some(gap_size);
         self
@@ -214,7 +214,7 @@ impl DatasetAccessBuilder {
                 h5try!(H5Pset_efile_prefix(id, v.as_ptr()));
             }
         }
-        #[cfg(feature = "1.10.0")]
+        #[cfg(all(feature = "1.10.0", feature = "link"))]
         {
             if let Some(v) = self.virtual_view {
                 h5try!(H5Pset_virtual_view(id, v.into()));
@@ -291,19 +291,19 @@ impl DatasetAccess {
         self.get_efile_prefix().ok().unwrap_or_default()
     }
 
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     #[doc(hidden)]
     pub fn get_virtual_view(&self) -> Result<VirtualView> {
         h5get!(H5Pget_virtual_view(self.id()): H5D_vds_view_t).map(Into::into)
     }
 
     /// Returns the virtual dataset view options.
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn virtual_view(&self) -> VirtualView {
         self.get_virtual_view().ok().unwrap_or_default()
     }
 
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     #[doc(hidden)]
     pub fn get_virtual_printf_gap(&self) -> Result<usize> {
         h5get!(H5Pget_virtual_printf_gap(self.id()): hsize_t).map(|x| x as _)
@@ -311,7 +311,7 @@ impl DatasetAccess {
 
     /// Returns the maximum number of files/datasets allowed to be missing when determining the
     /// extent of an unlimited virtual dataset with printf-style mappings.
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn virtual_printf_gap(&self) -> usize {
         self.get_virtual_printf_gap().unwrap_or(0)
     }

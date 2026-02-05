@@ -47,9 +47,9 @@ use crate::sys::h5p::{H5Pget_fapl_direct, H5Pset_fapl_direct};
 #[cfg(feature = "mpio")]
 use crate::sys::h5p::{H5Pget_fapl_mpio, H5Pset_fapl_mpio};
 
-#[cfg(feature = "1.10.1")]
+#[cfg(all(feature = "1.10.1", feature = "link"))]
 use crate::sys::h5ac::{H5AC_cache_image_config_t, H5AC__CACHE_IMAGE__ENTRY_AGEOUT__NONE};
-#[cfg(feature = "1.10.2")]
+#[cfg(all(feature = "1.10.2", feature = "link"))]
 use crate::sys::h5f::H5F_libver_t;
 #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
 use crate::sys::h5p::{
@@ -60,14 +60,14 @@ use crate::sys::h5p::{
 use crate::sys::h5p::{H5Pget_core_write_tracking, H5Pset_core_write_tracking};
 #[cfg(feature = "1.8.7")]
 use crate::sys::h5p::{H5Pget_elink_file_cache_size, H5Pset_elink_file_cache_size};
-#[cfg(feature = "1.10.1")]
+#[cfg(all(feature = "1.10.1", feature = "link"))]
 use crate::sys::h5p::{
     H5Pget_evict_on_close, H5Pget_mdc_image_config, H5Pget_page_buffer_size, H5Pset_evict_on_close,
     H5Pset_mdc_image_config, H5Pset_page_buffer_size,
 };
-#[cfg(feature = "1.10.2")]
+#[cfg(all(feature = "1.10.2", feature = "link"))]
 use crate::sys::h5p::{H5Pget_libver_bounds, H5Pset_libver_bounds};
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 use crate::sys::h5p::{
     H5Pget_mdc_log_options, H5Pget_metadata_read_attempts, H5Pset_mdc_log_options,
     H5Pset_metadata_read_attempts,
@@ -116,21 +116,21 @@ impl Debug for FileAccess {
         formatter.field("fclose_degree", &self.fclose_degree());
         formatter.field("gc_references", &self.gc_references());
         formatter.field("small_data_block_size", &self.small_data_block_size());
-        #[cfg(feature = "1.10.2")]
+        #[cfg(all(feature = "1.10.2", feature = "link"))]
         formatter.field("libver_bounds", &self.libver_bounds());
         #[cfg(feature = "1.8.7")]
         formatter.field("elink_file_cache_size", &self.elink_file_cache_size());
         formatter.field("meta_block_size", &self.meta_block_size());
-        #[cfg(feature = "1.10.1")]
+        #[cfg(all(feature = "1.10.1", feature = "link"))]
         formatter.field("page_buffer_size", &self.page_buffer_size());
-        #[cfg(feature = "1.10.1")]
+        #[cfg(all(feature = "1.10.1", feature = "link"))]
         formatter.field("evict_on_close", &self.evict_on_close());
-        #[cfg(feature = "1.10.1")]
+        #[cfg(all(feature = "1.10.1", feature = "link"))]
         formatter.field("mdc_image_config", &self.mdc_image_config());
         formatter.field("sieve_buf_size", &self.sieve_buf_size());
-        #[cfg(feature = "1.10.0")]
+        #[cfg(all(feature = "1.10.0", feature = "link"))]
         formatter.field("metadata_read_attempts", &self.metadata_read_attempts());
-        #[cfg(feature = "1.10.0")]
+        #[cfg(all(feature = "1.10.0", feature = "link"))]
         formatter.field("mdc_log_options", &self.mdc_log_options());
         #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
         formatter.field("all_coll_metadata_ops", &self.all_coll_metadata_ops());
@@ -964,7 +964,7 @@ impl From<H5AC_cache_config_t> for MetadataCacheConfig {
     }
 }
 
-#[cfg(feature = "1.10.1")]
+#[cfg(all(feature = "1.10.1", feature = "link"))]
 mod cache_image_config {
     use super::*;
 
@@ -1012,11 +1012,11 @@ mod cache_image_config {
     }
 }
 
-#[cfg(feature = "1.10.1")]
+#[cfg(all(feature = "1.10.1", feature = "link"))]
 pub use self::cache_image_config::*;
 
 /// Metadata cache logging options.
-#[cfg(feature = "1.10.0")]
+#[cfg(all(feature = "1.10.0", feature = "link"))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CacheLogOptions {
     /// Whether logging is enabled.
@@ -1027,7 +1027,7 @@ pub struct CacheLogOptions {
     pub start_on_access: bool,
 }
 
-#[cfg(feature = "1.10.2")]
+#[cfg(all(feature = "1.10.2", feature = "link"))]
 mod libver {
     use super::*;
 
@@ -1102,7 +1102,7 @@ mod libver {
     }
 }
 
-#[cfg(feature = "1.10.2")]
+#[cfg(all(feature = "1.10.2", feature = "link"))]
 pub use self::libver::*;
 
 /// Builder used to create file access property list.
@@ -1118,17 +1118,17 @@ pub struct FileAccessBuilder {
     #[cfg(feature = "1.8.7")]
     elink_file_cache_size: Option<u32>,
     meta_block_size: Option<u64>,
-    #[cfg(feature = "1.10.1")]
+    #[cfg(all(feature = "1.10.1", feature = "link"))]
     page_buffer_size: Option<PageBufferSize>,
     sieve_buf_size: Option<usize>,
-    #[cfg(feature = "1.10.1")]
+    #[cfg(all(feature = "1.10.1", feature = "link"))]
     evict_on_close: Option<bool>,
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     metadata_read_attempts: Option<u32>,
     mdc_config: Option<MetadataCacheConfig>,
-    #[cfg(feature = "1.10.1")]
+    #[cfg(all(feature = "1.10.1", feature = "link"))]
     mdc_image_config: Option<CacheImageConfig>,
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     mdc_log_options: Option<CacheLogOptions>,
     #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
     all_coll_metadata_ops: Option<bool>,
@@ -1136,7 +1136,7 @@ pub struct FileAccessBuilder {
     coll_metadata_write: Option<bool>,
     gc_references: Option<bool>,
     small_data_block_size: Option<u64>,
-    #[cfg(feature = "1.10.2")]
+    #[cfg(all(feature = "1.10.2", feature = "link"))]
     libver_bounds: Option<LibVerBounds>,
 }
 
@@ -1158,7 +1158,7 @@ impl FileAccessBuilder {
         builder.driver(&drv);
         builder.gc_references(plist.get_gc_references()?);
         builder.small_data_block_size(plist.get_small_data_block_size()?);
-        #[cfg(feature = "1.10.2")]
+        #[cfg(all(feature = "1.10.2", feature = "link"))]
         {
             let v = plist.get_libver_bounds()?;
             builder.libver_bounds(v.low, v.high);
@@ -1168,7 +1168,7 @@ impl FileAccessBuilder {
             builder.elink_file_cache_size(plist.get_elink_file_cache_size()?);
         }
         builder.meta_block_size(plist.get_meta_block_size()?);
-        #[cfg(feature = "1.10.1")]
+        #[cfg(all(feature = "1.10.1", feature = "link"))]
         {
             let v = plist.get_page_buffer_size()?;
             builder.page_buffer_size(v.buf_size, v.min_meta_perc, v.min_raw_perc);
@@ -1176,7 +1176,7 @@ impl FileAccessBuilder {
             builder.mdc_image_config(plist.get_mdc_image_config()?.generate_image);
         }
         builder.sieve_buf_size(plist.get_sieve_buf_size()?);
-        #[cfg(feature = "1.10.0")]
+        #[cfg(all(feature = "1.10.0", feature = "link"))]
         {
             builder.metadata_read_attempts(plist.get_metadata_read_attempts()?);
             let v = plist.get_mdc_log_options()?;
@@ -1233,7 +1233,7 @@ impl FileAccessBuilder {
     }
 
     /// Sets the page buffer size properties.
-    #[cfg(feature = "1.10.1")]
+    #[cfg(all(feature = "1.10.1", feature = "link"))]
     pub fn page_buffer_size(
         &mut self,
         buf_size: usize,
@@ -1251,7 +1251,7 @@ impl FileAccessBuilder {
     }
 
     /// Sets whether object metadata should be evicted from cache when an object is closed.
-    #[cfg(feature = "1.10.1")]
+    #[cfg(all(feature = "1.10.1", feature = "link"))]
     pub fn evict_on_close(&mut self, evict_on_close: bool) -> &mut Self {
         self.evict_on_close = Some(evict_on_close);
         self
@@ -1259,7 +1259,7 @@ impl FileAccessBuilder {
 
     /// Sets the number of reads that the library will try when reading checksummed metadata in a
     /// file opened with SWMR access.
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn metadata_read_attempts(&mut self, attempts: u32) -> &mut Self {
         self.metadata_read_attempts = Some(attempts);
         self
@@ -1272,7 +1272,7 @@ impl FileAccessBuilder {
     }
 
     /// Sets whether a cache image should be created on file close.
-    #[cfg(feature = "1.10.1")]
+    #[cfg(all(feature = "1.10.1", feature = "link"))]
     pub fn mdc_image_config(&mut self, generate_image: bool) -> &mut Self {
         self.mdc_image_config = Some(CacheImageConfig {
             generate_image,
@@ -1283,7 +1283,7 @@ impl FileAccessBuilder {
     }
 
     /// Sets metadata cache logging options.
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn mdc_log_options(
         &mut self,
         is_enabled: bool,
@@ -1322,32 +1322,32 @@ impl FileAccessBuilder {
     }
 
     /// Sets the range of library versions to use when writing objects.
-    #[cfg(feature = "1.10.2")]
+    #[cfg(all(feature = "1.10.2", feature = "link"))]
     pub fn libver_bounds(&mut self, low: LibraryVersion, high: LibraryVersion) -> &mut Self {
         self.libver_bounds = Some(LibVerBounds { low, high });
         self
     }
 
     /// Allows use of the earliest library version when writing objects.
-    #[cfg(feature = "1.10.2")]
+    #[cfg(all(feature = "1.10.2", feature = "link"))]
     pub fn libver_earliest(&mut self) -> &mut Self {
         self.libver_bounds(LibraryVersion::Earliest, LibraryVersion::latest())
     }
 
     /// Sets the earliest library version for writing objects to v18.
-    #[cfg(feature = "1.10.2")]
+    #[cfg(all(feature = "1.10.2", feature = "link"))]
     pub fn libver_v18(&mut self) -> &mut Self {
         self.libver_bounds(LibraryVersion::V18, LibraryVersion::latest())
     }
 
     /// Sets the earliest library version for writing objects to v110.
-    #[cfg(feature = "1.10.2")]
+    #[cfg(all(feature = "1.10.2", feature = "link"))]
     pub fn libver_v110(&mut self) -> &mut Self {
         self.libver_bounds(LibraryVersion::V110, LibraryVersion::latest())
     }
 
     /// Allows only the latest library version when writing objects.
-    #[cfg(feature = "1.10.2")]
+    #[cfg(all(feature = "1.10.2", feature = "link"))]
     pub fn libver_latest(&mut self) -> &mut Self {
         self.libver_bounds(LibraryVersion::latest(), LibraryVersion::latest())
     }
@@ -1639,7 +1639,7 @@ impl FileAccessBuilder {
         if let Some(v) = self.small_data_block_size {
             h5try!(H5Pset_small_data_block_size(id, v as _));
         }
-        #[cfg(feature = "1.10.2")]
+        #[cfg(all(feature = "1.10.2", feature = "link"))]
         {
             if let Some(v) = self.libver_bounds {
                 h5try!(H5Pset_libver_bounds(id, v.low.into(), v.high.into()));
@@ -1654,7 +1654,7 @@ impl FileAccessBuilder {
         if let Some(v) = self.meta_block_size {
             h5try!(H5Pset_meta_block_size(id, v as _));
         }
-        #[cfg(feature = "1.10.1")]
+        #[cfg(all(feature = "1.10.1", feature = "link"))]
         {
             if let Some(v) = self.page_buffer_size {
                 h5try!(H5Pset_page_buffer_size(
@@ -1680,7 +1680,7 @@ impl FileAccessBuilder {
         if let Some(v) = self.sieve_buf_size {
             h5try!(H5Pset_sieve_buf_size(id, v as _));
         }
-        #[cfg(feature = "1.10.0")]
+        #[cfg(all(feature = "1.10.0", feature = "link"))]
         {
             if let Some(v) = self.metadata_read_attempts {
                 h5try!(H5Pset_metadata_read_attempts(id, v as _));
@@ -1936,7 +1936,7 @@ impl FileAccess {
         self.get_meta_block_size().unwrap_or(2048)
     }
 
-    #[cfg(feature = "1.10.1")]
+    #[cfg(all(feature = "1.10.1", feature = "link"))]
     #[doc(hidden)]
     pub fn get_page_buffer_size(&self) -> Result<PageBufferSize> {
         h5get!(H5Pget_page_buffer_size(self.id()): size_t, c_uint, c_uint).map(
@@ -1949,7 +1949,7 @@ impl FileAccess {
     }
 
     /// Returns the page buffer size properties.
-    #[cfg(feature = "1.10.1")]
+    #[cfg(all(feature = "1.10.1", feature = "link"))]
     pub fn page_buffer_size(&self) -> PageBufferSize {
         self.get_page_buffer_size().unwrap_or_else(|_| PageBufferSize::default())
     }
@@ -1964,7 +1964,7 @@ impl FileAccess {
         self.get_sieve_buf_size().unwrap_or(64 * 1024)
     }
 
-    #[cfg(feature = "1.10.1")]
+    #[cfg(all(feature = "1.10.1", feature = "link"))]
     #[doc(hidden)]
     pub fn get_evict_on_close(&self) -> Result<bool> {
         h5get!(H5Pget_evict_on_close(self.id()): hbool_t).map(|x| x > 0)
@@ -1972,19 +1972,19 @@ impl FileAccess {
 
     /// Returns `true` if an object will be evicted from the metadata cache when the object is
     /// closed.
-    #[cfg(feature = "1.10.1")]
+    #[cfg(all(feature = "1.10.1", feature = "link"))]
     pub fn evict_on_close(&self) -> bool {
         self.get_evict_on_close().unwrap_or(false)
     }
 
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     #[doc(hidden)]
     pub fn get_metadata_read_attempts(&self) -> Result<u32> {
         h5get!(H5Pget_metadata_read_attempts(self.id()): c_uint).map(|x| x as _)
     }
 
     /// Returns the number of read attempts for SWMR access.
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn metadata_read_attempts(&self) -> u32 {
         self.get_metadata_read_attempts().unwrap_or(1)
     }
@@ -2001,7 +2001,7 @@ impl FileAccess {
         self.get_mdc_config().ok().unwrap_or_default()
     }
 
-    #[cfg(feature = "1.10.1")]
+    #[cfg(all(feature = "1.10.1", feature = "link"))]
     #[doc(hidden)]
     pub fn get_mdc_image_config(&self) -> Result<CacheImageConfig> {
         let mut config: H5AC_cache_image_config_t = unsafe { mem::zeroed() };
@@ -2010,12 +2010,12 @@ impl FileAccess {
     }
 
     /// Returns the metadata cache image configuration.
-    #[cfg(feature = "1.10.1")]
+    #[cfg(all(feature = "1.10.1", feature = "link"))]
     pub fn mdc_image_config(&self) -> CacheImageConfig {
         self.get_mdc_image_config().ok().unwrap_or_default()
     }
 
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     #[doc(hidden)]
     #[allow(clippy::unnecessary_cast)]
     pub fn get_mdc_log_options(&self) -> Result<CacheLogOptions> {
@@ -2046,7 +2046,7 @@ impl FileAccess {
     }
 
     /// Returns the metadata cache logging options.
-    #[cfg(feature = "1.10.0")]
+    #[cfg(all(feature = "1.10.0", feature = "link"))]
     pub fn mdc_log_options(&self) -> CacheLogOptions {
         self.get_mdc_log_options().ok().unwrap_or_default()
     }
@@ -2095,7 +2095,7 @@ impl FileAccess {
         self.get_small_data_block_size().unwrap_or(2048)
     }
 
-    #[cfg(feature = "1.10.2")]
+    #[cfg(all(feature = "1.10.2", feature = "link"))]
     #[doc(hidden)]
     pub fn get_libver_bounds(&self) -> Result<LibVerBounds> {
         h5get!(H5Pget_libver_bounds(self.id()): H5F_libver_t, H5F_libver_t)
@@ -2103,13 +2103,13 @@ impl FileAccess {
     }
 
     /// Returns the library format version bounds for writing objects to a file.
-    #[cfg(feature = "1.10.2")]
+    #[cfg(all(feature = "1.10.2", feature = "link"))]
     pub fn libver_bounds(&self) -> LibVerBounds {
         self.get_libver_bounds().ok().unwrap_or_default()
     }
 
     /// Returns the lower library format version bound for writing objects to a file.
-    #[cfg(feature = "1.10.2")]
+    #[cfg(all(feature = "1.10.2", feature = "link"))]
     pub fn libver(&self) -> LibraryVersion {
         self.get_libver_bounds().ok().unwrap_or_default().low
     }

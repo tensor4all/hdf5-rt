@@ -46,7 +46,7 @@ pub struct ObjectReference2(StdReference);
 impl ObjectReferencePrivate for ObjectReference2 {}
 
 impl ObjectReference for ObjectReference2 {
-    const REF_TYPE: hdf5_sys::h5r::H5R_type_t = H5R_OBJECT2;
+    const REF_TYPE: crate::sys::h5r::H5R_type_t = H5R_OBJECT2;
 
     fn ptr(&self) -> *const c_void {
         self.0.ptr().cast()
@@ -57,16 +57,18 @@ impl ObjectReference for ObjectReference2 {
         Ok(Self(StdReference(reference)))
     }
 
-    fn get_object_type(&self, _location: &Location) -> Result<hdf5_sys::h5o::H5O_type_t> {
+    fn get_object_type(&self, _location: &Location) -> Result<crate::sys::h5o::H5O_type_t> {
         let mut objtype = std::mem::MaybeUninit::<H5O_type_t>::uninit();
-        h5call!(H5Rget_obj_type3(self.0.ptr(), H5P_DEFAULT, objtype.as_mut_ptr()))?;
+        // Cast to *mut as HDF5 API signature requires, though it doesn't mutate the reference
+        h5call!(H5Rget_obj_type3(self.0.ptr() as *mut _, H5P_DEFAULT, objtype.as_mut_ptr()))?;
         let objtype = unsafe { objtype.assume_init() };
         Ok(objtype)
     }
 
     fn dereference(&self, location: &Location) -> Result<ReferencedObject> {
         let object_type = self.get_object_type(location)?;
-        let object_id = h5call!(H5Ropen_object(self.0.ptr(), H5P_DEFAULT, H5P_DEFAULT))?;
+        // Cast to *mut as HDF5 API signature requires, though it doesn't mutate the reference
+        let object_id = h5call!(H5Ropen_object(self.0.ptr() as *mut _, H5P_DEFAULT, H5P_DEFAULT))?;
         ReferencedObject::from_type_and_id(object_type, object_id)
     }
 }

@@ -355,9 +355,10 @@ pub enum H5F_close_degree_t {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum H5F_libver_t {
     H5F_LIBVER_ERROR = -1,
+    #[default]
     H5F_LIBVER_EARLIEST = 0,
     H5F_LIBVER_V18 = 1,
     H5F_LIBVER_V110 = 2,
@@ -425,8 +426,9 @@ pub const H5FD_LOG_ALL: u64 = H5FD_LOG_LOC_IO
     | H5FD_LOG_META_IO;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum H5F_fspace_strategy_t {
+    #[default]
     H5F_FSPACE_STRATEGY_FSM_AGGR = 0,
     H5F_FSPACE_STRATEGY_PAGE = 1,
     H5F_FSPACE_STRATEGY_AGGR = 2,
@@ -576,7 +578,7 @@ pub struct H5O_info2_t {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct H5O_token_t {
     pub __data: [u8; 16],
 }

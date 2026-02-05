@@ -67,7 +67,7 @@ pub(crate) fn get_num_chunks(ds: &Dataset) -> Option<usize> {
     }))
 }
 
-#[cfg(feature = "1.14.0")]
+#[cfg(all(feature = "1.14.0", feature = "link"))]
 mod v1_14_0 {
     use super::*;
     use crate::sys::h5d::H5Dchunk_iter;
@@ -182,5 +182,5 @@ mod v1_14_0 {
         }
     }
 }
-#[cfg(feature = "1.14.0")]
+#[cfg(all(feature = "1.14.0", feature = "link"))]
 pub use v1_14_0::*;
