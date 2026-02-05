@@ -14,8 +14,16 @@
 
 using Test
 using HDF5
-import HDF5.API: h5_get_libversion
 import HDF5_jll
+
+# h5_get_libversion location varies by HDF5.jl version
+const h5_get_libversion = try
+    # HDF5.jl 0.17+
+    HDF5.API.h5_get_libversion
+catch
+    # Older versions
+    HDF5.h5_get_libversion
+end
 
 # Get the HDF5 library path from HDF5_jll
 function get_hdf5_lib_path()
