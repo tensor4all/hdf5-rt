@@ -629,3 +629,15 @@ pub fn is_initialized() -> bool {
 pub fn library_path() -> Option<String> {
     runtime::library_path()
 }
+
+pub use runtime::Version;
+
+/// Get the detected HDF5 library version.
+pub fn hdf5_version() -> Option<Version> {
+    runtime::hdf5_version()
+}
+
+/// Check if HDF5 version is at least the specified version.
+pub fn hdf5_version_at_least(major: u8, minor: u8, micro: u8) -> bool {
+    runtime::hdf5_version_at_least(major, minor, micro)
+}
