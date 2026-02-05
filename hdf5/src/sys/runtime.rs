@@ -3,6 +3,10 @@
 //! This module provides HDF5 FFI bindings that load the library at runtime
 //! using dlopen/dlsym, allowing builds without HDF5 installed.
 
+// Allow C-style naming conventions for FFI types that must match the HDF5 C API
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+
 use libloading::{Library, Symbol};
 use parking_lot::ReentrantMutex;
 use std::sync::OnceLock;

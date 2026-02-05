@@ -11,7 +11,6 @@ use std::ops::Deref;
 use crate::sys::h5p::{H5Pcreate, H5Pget_chunk_cache, H5Pset_chunk_cache};
 #[cfg(all(feature = "1.10.0", feature = "have-parallel"))]
 use crate::sys::h5p::{H5Pget_all_coll_metadata_ops, H5Pset_all_coll_metadata_ops};
-#[cfg(feature = "1.8.17")]
 use crate::sys::h5p::{H5Pget_efile_prefix, H5Pset_efile_prefix};
 #[cfg(all(feature = "1.10.0", feature = "link"))]
 use crate::sys::{
@@ -56,7 +55,6 @@ impl Debug for DatasetAccess {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = f.debug_struct("DatasetAccess");
         formatter.field("chunk_cache", &self.chunk_cache());
-        #[cfg(feature = "1.8.17")]
         formatter.field("efile_prefix", &self.efile_prefix());
         #[cfg(all(feature = "1.10.0", feature = "link"))]
         {
@@ -132,7 +130,6 @@ impl From<VirtualView> for H5D_vds_view_t {
 #[derive(Clone, Debug, Default)]
 pub struct DatasetAccessBuilder {
     chunk_cache: Option<ChunkCache>,
-    #[cfg(feature = "1.8.17")]
     efile_prefix: Option<String>,
     #[cfg(all(feature = "1.10.0", feature = "link"))]
     virtual_view: Option<VirtualView>,
@@ -153,7 +150,6 @@ impl DatasetAccessBuilder {
         let mut builder = Self::default();
         let v = plist.get_chunk_cache()?;
         builder.chunk_cache(v.nslots, v.nbytes, v.w0);
-        #[cfg(feature = "1.8.17")]
         {
             let v = plist.get_efile_prefix()?;
             builder.efile_prefix(&v);
@@ -175,7 +171,6 @@ impl DatasetAccessBuilder {
     }
 
     /// Sets the external dataset storage file prefix.
-    #[cfg(feature = "1.8.17")]
     pub fn efile_prefix(&mut self, prefix: &str) -> &mut Self {
         self.efile_prefix = Some(prefix.into());
         self
@@ -207,12 +202,9 @@ impl DatasetAccessBuilder {
         if let Some(v) = self.chunk_cache {
             h5try!(H5Pset_chunk_cache(id, v.nslots as _, v.nbytes as _, v.w0 as _));
         }
-        #[cfg(feature = "1.8.17")]
-        {
-            if let Some(ref v) = self.efile_prefix {
-                let v = to_cstring(v.as_ref())?;
-                h5try!(H5Pset_efile_prefix(id, v.as_ptr()));
-            }
+        if let Some(ref v) = self.efile_prefix {
+            let v = to_cstring(v.as_ref())?;
+            h5try!(H5Pset_efile_prefix(id, v.as_ptr()));
         }
         #[cfg(all(feature = "1.10.0", feature = "link"))]
         {
@@ -279,14 +271,12 @@ impl DatasetAccess {
         self.get_chunk_cache().unwrap_or_else(|_| ChunkCache::default())
     }
 
-    #[cfg(feature = "1.8.17")]
     #[doc(hidden)]
     pub fn get_efile_prefix(&self) -> Result<String> {
         h5lock!(get_h5_str(|m, s| H5Pget_efile_prefix(self.id(), m, s)))
     }
 
     /// Returns the external dataset storage file prefix.
-    #[cfg(feature = "1.8.17")]
     pub fn efile_prefix(&self) -> String {
         self.get_efile_prefix().ok().unwrap_or_default()
     }

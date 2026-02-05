@@ -158,7 +158,6 @@ pub enum ByteOrder {
     None,
 }
 
-#[cfg(feature = "1.8.6")]
 impl From<H5T_order_t> for ByteOrder {
     fn from(order: H5T_order_t) -> Self {
         match order {
@@ -166,18 +165,6 @@ impl From<H5T_order_t> for ByteOrder {
             H5T_order_t::H5T_ORDER_BE => Self::BigEndian,
             H5T_order_t::H5T_ORDER_VAX => Self::Vax,
             H5T_order_t::H5T_ORDER_MIXED => Self::Mixed,
-            _ => Self::None,
-        }
-    }
-}
-
-#[cfg(not(feature = "1.8.6"))]
-impl From<H5T_order_t> for ByteOrder {
-    fn from(order: H5T_order_t) -> Self {
-        match order {
-            H5T_order_t::H5T_ORDER_LE => Self::LittleEndian,
-            H5T_order_t::H5T_ORDER_BE => Self::BigEndian,
-            H5T_order_t::H5T_ORDER_VAX => Self::Vax,
             _ => Self::None,
         }
     }

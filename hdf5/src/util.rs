@@ -48,19 +48,9 @@ pub fn string_to_fixed_bytes(s: &str, buf: &mut [c_char]) {
 
 /// # Safety
 /// `mem` must point to memory allocated by HDF5.
-#[cfg(feature = "1.8.13")]
 pub unsafe fn h5_free_memory(mem: *mut c_void) {
     use crate::sys::h5::H5free_memory;
     unsafe { H5free_memory(mem) };
-}
-
-/// # Safety
-/// `mem` must point to memory allocated by HDF5.
-#[cfg(not(feature = "1.8.13"))]
-pub unsafe fn h5_free_memory(mem: *mut c_void) {
-    // this may fail in debug builds of HDF5
-    use libc::free;
-    unsafe { free(mem) };
 }
 
 /// # Safety

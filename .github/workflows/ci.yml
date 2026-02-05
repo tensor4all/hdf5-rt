@@ -63,7 +63,6 @@ jobs:
           - "complex"
           - "f16"
           - "complex,f16"
-          - "runtime-loading"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6

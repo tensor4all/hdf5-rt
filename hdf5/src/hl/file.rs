@@ -8,7 +8,6 @@ use crate::sys::h5f::{
     H5Fget_freespace, H5Fget_intent, H5Fget_obj_count, H5Fget_obj_ids, H5Fopen, H5F_ACC_DEFAULT,
     H5F_ACC_EXCL, H5F_ACC_RDONLY, H5F_ACC_RDWR, H5F_ACC_TRUNC, H5F_SCOPE_LOCAL,
 };
-#[cfg(feature = "1.10.0")]
 use crate::sys::h5f::{H5Fstart_swmr_write, H5F_ACC_SWMR_READ};
 
 use crate::hl::plist::{
@@ -19,12 +18,10 @@ use crate::internal_prelude::*;
 
 /// File opening mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(not(feature = "1.10.0"), non_exhaustive)]
 pub enum OpenMode {
     /// Open a file as read-only, file must exist.
     Read,
     /// Open a file as read-only in SWMR mode, file must exist.
-    #[cfg(feature = "1.10.0")]
     ReadSWMR,
     /// Open a file as read/write, file must exist.
     ReadWrite,
@@ -185,7 +182,6 @@ impl File {
         self.create_plist()
     }
 
-    #[cfg(feature = "1.10.0")]
     /// Mark this file as ready for opening as SWMR
     pub fn start_swmr(&self) -> Result<()> {
         let id = self.id();
@@ -245,13 +241,10 @@ impl FileBuilder {
         )?;
         let flags = match mode {
             OpenMode::Read => H5F_ACC_RDONLY,
-            #[cfg(feature = "1.10.0")]
             OpenMode::ReadSWMR => H5F_ACC_RDONLY | H5F_ACC_SWMR_READ,
             OpenMode::ReadWrite => H5F_ACC_RDWR,
             OpenMode::Create => H5F_ACC_TRUNC,
             OpenMode::CreateExcl | OpenMode::Append => H5F_ACC_EXCL,
-            #[cfg(not(feature = "1.10.0"))]
-            _ => unreachable!(),
         };
         let fname_ptr = filename.as_ptr();
         h5lock!({
@@ -260,7 +253,6 @@ impl FileBuilder {
                 OpenMode::Read | OpenMode::ReadWrite => {
                     File::from_id(h5try!(H5Fopen(fname_ptr, flags, fapl.id())))
                 }
-                #[cfg(feature = "1.10.0")]
                 OpenMode::ReadSWMR => File::from_id(h5try!(H5Fopen(fname_ptr, flags, fapl.id()))),
                 _ => {
                     let fcpl = self.fcpl.finish()?;
