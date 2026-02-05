@@ -1323,6 +1323,47 @@ hdf5_function!(H5Oopen_by_token, fn(loc_id: hid_t, token: H5O_token_t) -> hid_t)
 hdf5_function!(H5Oset_comment, fn(obj_id: hid_t, comment: *const c_char) -> herr_t);
 hdf5_function!(H5Oget_comment, fn(obj_id: hid_t, comment: *mut c_char, bufsize: size_t) -> ssize_t);
 
+// Pre-1.12 functions (loaded conditionally)
+
+/// H5Oget_info1 - Available in HDF5 < 1.12
+/// Returns None if the function is not available (HDF5 >= 1.12)
+pub unsafe fn H5Oget_info1(
+    loc_id: hid_t,
+    oinfo: *mut H5O_info1_t,
+    fields: c_uint,
+) -> Option<herr_t> {
+    let lib = get_library();
+    let func: Option<Symbol<unsafe extern "C" fn(hid_t, *mut H5O_info1_t, c_uint) -> herr_t>> =
+        lib.get(b"H5Oget_info1").ok();
+    func.map(|f| f(loc_id, oinfo, fields))
+}
+
+/// H5Oget_info_by_name1 - Available in HDF5 < 1.12
+/// Returns None if the function is not available (HDF5 >= 1.12)
+pub unsafe fn H5Oget_info_by_name1(
+    loc_id: hid_t,
+    name: *const c_char,
+    oinfo: *mut H5O_info1_t,
+    fields: c_uint,
+    lapl_id: hid_t,
+) -> Option<herr_t> {
+    let lib = get_library();
+    let func: Option<
+        Symbol<
+            unsafe extern "C" fn(hid_t, *const c_char, *mut H5O_info1_t, c_uint, hid_t) -> herr_t,
+        >,
+    > = lib.get(b"H5Oget_info_by_name1").ok();
+    func.map(|f| f(loc_id, name, oinfo, fields, lapl_id))
+}
+
+/// H5Oopen_by_addr - Available in all HDF5 versions
+pub unsafe fn H5Oopen_by_addr(loc_id: hid_t, addr: haddr_t) -> hid_t {
+    let lib = get_library();
+    let func: Symbol<unsafe extern "C" fn(hid_t, haddr_t) -> hid_t> =
+        lib.get(b"H5Oopen_by_addr").expect("Failed to load H5Oopen_by_addr");
+    func(loc_id, addr)
+}
+
 // H5P (Property List)
 hdf5_function!(H5Pcreate, fn(cls_id: hid_t) -> hid_t);
 hdf5_function!(H5Pcopy, fn(plist_id: hid_t) -> hid_t);

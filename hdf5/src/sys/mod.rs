@@ -266,8 +266,9 @@ pub mod h5l {
 
 pub mod h5o {
     pub use super::runtime::{
-        H5O_info2_t, H5O_token_t, H5O_type_t, H5Oclose, H5Ocopy, H5Oget_comment, H5Oget_info3,
-        H5Oget_info_by_name3, H5Oopen, H5Oopen_by_token, H5Oset_comment, H5O_COPY_ALL,
+        H5O_info1_t, H5O_info2_t, H5O_token_t, H5O_type_t, H5Oclose, H5Ocopy, H5Oget_comment,
+        H5Oget_info1, H5Oget_info3, H5Oget_info_by_name1, H5Oget_info_by_name3, H5Oopen,
+        H5Oopen_by_addr, H5Oopen_by_token, H5Oset_comment, H5O_COPY_ALL,
         H5O_COPY_EXPAND_EXT_LINK_FLAG, H5O_COPY_EXPAND_REFERENCE_FLAG,
         H5O_COPY_EXPAND_SOFT_LINK_FLAG, H5O_COPY_MERGE_COMMITTED_DTYPE_FLAG,
         H5O_COPY_PRESERVE_NULL_FLAG, H5O_COPY_SHALLOW_HIERARCHY_FLAG, H5O_COPY_WITHOUT_ATTR_FLAG,
