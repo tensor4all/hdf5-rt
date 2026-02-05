@@ -50,7 +50,11 @@ macro_rules! link_hid {
 #[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 macro_rules! link_hid {
     ($rust_name:ident, $c_name:path) => {
-        pub static $rust_name: LazyLock<hid_t> = LazyLock::new(|| $c_name());
+        pub static $rust_name: LazyLock<hid_t> = LazyLock::new(|| {
+            // Ensure the library is initialized
+            LazyLock::force(&crate::sync::LIBRARY_INIT);
+            $c_name()
+        });
     };
 }
 

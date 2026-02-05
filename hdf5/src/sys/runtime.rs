@@ -1238,7 +1238,7 @@ hdf5_function!(
     ) -> herr_t
 );
 hdf5_function!(
-    H5Literate,
+    H5Literate1,
     fn(
         grp_id: hid_t,
         idx_type: H5_index_t,
@@ -1248,6 +1248,19 @@ hdf5_function!(
         op_data: *mut c_void,
     ) -> herr_t
 );
+
+/// Alias for backwards compatibility (H5Literate was renamed to H5Literate1 in HDF5 1.12+)
+#[inline]
+pub unsafe fn H5Literate(
+    grp_id: hid_t,
+    idx_type: H5_index_t,
+    order: H5_iter_order_t,
+    idx: *mut hsize_t,
+    op: H5L_iterate_t,
+    op_data: *mut c_void,
+) -> herr_t {
+    H5Literate1(grp_id, idx_type, order, idx, op, op_data)
+}
 hdf5_function!(
     H5Literate2,
     fn(

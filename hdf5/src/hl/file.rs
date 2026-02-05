@@ -507,7 +507,7 @@ pub mod tests {
     }
 
     fn rc(id: hid_t) -> Result<hsize_t> {
-        h5call!(hdf5_sys::h5i::H5Iget_ref(id)).map(|x| x as _)
+        h5call!(crate::sys::h5i::H5Iget_ref(id)).map(|x| x as _)
     }
 
     #[test]

@@ -238,6 +238,7 @@ pub mod tests {
     }
 
     #[test]
+    #[cfg(feature = "link")]
     fn library_version_eq_compile_version() {
         use crate::sys::Version;
         let (major, minor, micro) = library_version();

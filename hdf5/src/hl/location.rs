@@ -429,7 +429,7 @@ pub mod tests {
     pub fn test_location_info() {
         let new_file = |path| {
             cfg_if::cfg_if! {
-                if #[cfg(feature = "1.10.2")] {
+                if #[cfg(all(feature = "1.10.2", feature = "link"))] {
                     File::with_options().with_fapl(|p| p.libver_v110()).create(path)
                 } else {
                     File::create(path)
@@ -445,7 +445,7 @@ pub mod tests {
                 assert_eq!(info.num_links, 1);
                 assert_eq!(info.loc_type, LocationType::Group);
                 cfg_if::cfg_if! {
-                    if #[cfg(feature = "1.10.2")] {
+                    if #[cfg(all(feature = "1.10.2", feature = "link"))] {
                         assert!(info.btime > 0);
                     } else {
                         assert_eq!(info.btime, 0);
@@ -482,7 +482,7 @@ pub mod tests {
                 assert_eq!(info.loc_type, LocationType::Dataset);
                 assert!(info.ctime > 0);
                 cfg_if::cfg_if! {
-                    if #[cfg(feature = "1.10.2")] {
+                    if #[cfg(all(feature = "1.10.2", feature = "link"))] {
                         assert!(info.btime > 0);
                     } else {
                         assert_eq!(info.btime, 0);
