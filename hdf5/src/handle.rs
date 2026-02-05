@@ -75,14 +75,14 @@ impl Handle {
     }
 
     /// Get HDF5 object type as a native enum.
+    /// This function handles the enum value differences between HDF5 versions.
     pub fn id_type(&self) -> H5I_type_t {
         if self.id <= 0 {
             H5I_BADID
         } else {
-            match h5lock!(H5Iget_type(self.id)) {
-                tp if tp > H5I_BADID && tp < H5I_NTYPES => tp,
-                _ => H5I_BADID,
-            }
+            let raw = h5lock!(H5Iget_type(self.id));
+            // Convert raw HDF5 type to our normalized enum
+            crate::sys::convert_h5i_type(raw)
         }
     }
 }

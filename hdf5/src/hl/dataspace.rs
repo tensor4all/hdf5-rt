@@ -2,7 +2,7 @@ use std::fmt::{self, Debug};
 use std::ops::Deref;
 use std::ptr;
 
-use crate::sys::h5s::H5Sencode2;
+use crate::sys::h5s::H5Sencode;
 
 use crate::sys::h5s::{
     H5S_class_t, H5Scopy, H5Screate, H5Screate_simple, H5Sdecode, H5Sget_select_npoints,
@@ -151,9 +151,9 @@ impl Dataspace {
         h5lock!({
             let mut len: size_t = 0;
             let fapl = crate::hl::plist::file_access::FileAccessBuilder::new().finish()?;
-            h5try!(H5Sencode2(self.id(), ptr::null_mut(), &mut len, fapl.id()));
+            h5try!(H5Sencode(self.id(), ptr::null_mut(), &mut len, fapl.id()));
             let mut buf = vec![0_u8; len];
-            h5try!(H5Sencode2(self.id(), buf.as_mut_ptr().cast(), &mut len, fapl.id()));
+            h5try!(H5Sencode(self.id(), buf.as_mut_ptr().cast(), &mut len, fapl.id()));
             Ok(buf)
         })
     }

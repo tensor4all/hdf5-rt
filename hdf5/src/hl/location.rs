@@ -352,9 +352,10 @@ fn H5O_get_info(loc_id: hid_t, full: bool) -> Result<LocationInfo> {
         Ok(LocationInfo::from_info2(info))
     } else {
         // HDF5 < 1.12: Use H5Oget_info1 with H5O_info1_t
+        // Note: H5Oget_info1 does NOT have a fields parameter (only 2 params)
         let mut info_buf: MaybeUninit<H5O_info1_t> = MaybeUninit::uninit();
         let info_ptr = info_buf.as_mut_ptr();
-        let result = unsafe { H5Oget_info1(loc_id, info_ptr, info_fields(full)) };
+        let result = unsafe { H5Oget_info1(loc_id, info_ptr) };
         match result {
             Some(ret) if ret >= 0 => {
                 let info = unsafe { info_buf.assume_init() };
@@ -367,18 +368,19 @@ fn H5O_get_info(loc_id: hid_t, full: bool) -> Result<LocationInfo> {
 }
 
 #[allow(non_snake_case)]
-fn H5O_get_info_by_name(loc_id: hid_t, name: *const c_char, full: bool) -> Result<LocationInfo> {
+fn H5O_get_info_by_name(loc_id: hid_t, name: *const c_char, _full: bool) -> Result<LocationInfo> {
     if hdf5_version_at_least(1, 12, 0) {
         let mut info_buf: MaybeUninit<H5O_info2_t> = MaybeUninit::uninit();
         let info_ptr = info_buf.as_mut_ptr();
-        h5call!(H5Oget_info_by_name3(loc_id, name, info_ptr, info_fields(full), H5P_DEFAULT))?;
+        h5call!(H5Oget_info_by_name3(loc_id, name, info_ptr, info_fields(_full), H5P_DEFAULT))?;
         let info = unsafe { info_buf.assume_init() };
         Ok(LocationInfo::from_info2(info))
     } else {
+        // HDF5 < 1.12: Use H5Oget_info_by_name1 with H5O_info1_t
+        // Note: H5Oget_info_by_name1 does NOT have a fields parameter (only 4 params)
         let mut info_buf: MaybeUninit<H5O_info1_t> = MaybeUninit::uninit();
         let info_ptr = info_buf.as_mut_ptr();
-        let result =
-            unsafe { H5Oget_info_by_name1(loc_id, name, info_ptr, info_fields(full), H5P_DEFAULT) };
+        let result = unsafe { H5Oget_info_by_name1(loc_id, name, info_ptr, H5P_DEFAULT) };
         match result {
             Some(ret) if ret >= 0 => {
                 let info = unsafe { info_buf.assume_init() };

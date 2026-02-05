@@ -44,8 +44,8 @@ function build_rust_binary()
 
     println("Building Rust interop test binary...")
 
-    # Build with runtime-loading feature (includes link feature by default)
-    cmd = Cmd(`cargo build --example interop_test --features runtime-loading`; dir=hdf5_dir)
+    # Build with default features (runtime-loading is now the only mode)
+    cmd = Cmd(`cargo build --example interop_test`; dir=hdf5_dir)
 
     result = run(cmd; wait=true)
     if result.exitcode != 0

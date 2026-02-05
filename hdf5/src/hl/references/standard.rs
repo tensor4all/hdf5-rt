@@ -92,6 +92,12 @@ mod tests {
 
     #[test]
     pub fn test_references() {
+        // ObjectReference2 (H5R_ref_t) requires HDF5 1.12.0+
+        if !crate::sys::hdf5_version_at_least(1, 12, 0) {
+            eprintln!("Skipping test_references: requires HDF5 >= 1.12.0");
+            return;
+        }
+
         use super::ReferencedObject;
         with_tmp_file(|file| {
             file.create_group("g").unwrap();

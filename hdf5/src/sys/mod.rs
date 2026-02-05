@@ -433,7 +433,7 @@ pub mod h5r {
 pub mod h5s {
     pub use super::runtime::{
         H5S_class_t, H5S_sel_type, H5S_seloper_t, H5Sclose, H5Scopy, H5Screate, H5Screate_simple,
-        H5Sdecode, H5Sencode2, H5Sget_regular_hyperslab, H5Sget_select_elem_npoints,
+        H5Sdecode, H5Sencode, H5Sget_regular_hyperslab, H5Sget_select_elem_npoints,
         H5Sget_select_elem_pointlist, H5Sget_select_npoints, H5Sget_select_type,
         H5Sget_simple_extent_dims, H5Sget_simple_extent_ndims, H5Sget_simple_extent_npoints,
         H5Sget_simple_extent_type, H5Sis_regular_hyperslab, H5Sselect_all, H5Sselect_elements,

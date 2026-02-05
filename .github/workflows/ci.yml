@@ -41,37 +41,48 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Ubuntu with system HDF5 (1.10.x)
+          # Ubuntu with system HDF5 1.10.x (minimum supported version)
           - os: ubuntu-22.04
-            hdf5: "system"
-          # Ubuntu with conda HDF5 1.12
+            hdf5: "1.10"
+            hdf5_source: "apt"
+          # Ubuntu with conda HDF5 1.12.x
           - os: ubuntu-22.04
             hdf5: "1.12"
-          # Ubuntu with conda HDF5 1.14
+            hdf5_source: "conda"
+          # Ubuntu with conda HDF5 1.14.x
           - os: ubuntu-24.04
             hdf5: "1.14"
+            hdf5_source: "conda"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-      - name: Install system HDF5 (1.10.x)
-        if: matrix.hdf5 == 'system'
+      - name: Install HDF5 from apt (1.10.x)
+        if: matrix.hdf5_source == 'apt'
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
       - name: Setup Conda
-        if: matrix.hdf5 != 'system'
+        if: matrix.hdf5_source == 'conda'
         uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: true
           python-version: "3.11"
       - name: Install HDF5 from conda-forge
-        if: matrix.hdf5 != 'system'
+        if: matrix.hdf5_source == 'conda'
+        shell: bash -el {0}
+        run: conda install -c conda-forge "hdf5>=${{ matrix.hdf5 }},<${{ matrix.hdf5 }}.99"
+      - name: Set HDF5 library path (conda)
+        if: matrix.hdf5_source == 'conda'
+        shell: bash -el {0}
+        run: echo "LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+      - name: Show HDF5 version
         shell: bash -el {0}
         run: |
-          if [ "${{ matrix.hdf5 }}" = "1.12" ]; then
-            conda install -c conda-forge "hdf5>=1.12,<1.13"
+          if command -v h5dump &> /dev/null; then
+            h5dump --version
           else
-            conda install -c conda-forge "hdf5>=1.14,<1.15"
+            echo "h5dump not in PATH, checking library..."
+            find /usr -name "libhdf5*.so*" 2>/dev/null | head -5 || true
           fi
       - name: Build
         shell: bash -el {0}
@@ -104,6 +115,9 @@ jobs:
       - name: Install HDF5 1.12+ from conda-forge
         shell: bash -el {0}
         run: conda install -c conda-forge hdf5>=1.12
+      - name: Set HDF5 library path
+        shell: bash -el {0}
+        run: echo "LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
       - name: Build with features
         shell: bash -el {0}
         run: cargo build --workspace --features "${{ matrix.features }}" --verbose
@@ -148,6 +162,9 @@ jobs:
       - name: Install HDF5 1.12+ from conda-forge
         shell: bash -el {0}
         run: conda install -c conda-forge hdf5>=1.12
+      - name: Set HDF5 library path
+        shell: bash -el {0}
+        run: echo "LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
       - name: Setup Julia project
         shell: bash -el {0}
         run: |
@@ -175,6 +192,9 @@ jobs:
       - name: Install HDF5 1.12+ and h5py from conda-forge
         shell: bash -el {0}
         run: conda install -c conda-forge hdf5>=1.12 h5py
+      - name: Set HDF5 library path
+        shell: bash -el {0}
+        run: echo "LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
       - name: Install Python dependencies
         shell: bash -el {0}
         run: |

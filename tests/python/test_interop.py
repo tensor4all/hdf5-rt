@@ -179,8 +179,6 @@ def build_rust_binary() -> Path:
             "build",
             "--example",
             "interop_test",
-            "--features",
-            "runtime-loading",
         ],
         cwd=project_root / "hdf5",
         capture_output=True,

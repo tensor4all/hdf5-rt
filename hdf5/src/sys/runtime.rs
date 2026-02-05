@@ -567,7 +567,52 @@ pub struct H5O_info2_t {
     pub num_attrs: hsize_t,
 }
 
+/// Index/heap info structure for HDF5 < 1.12
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Default)]
+pub struct H5_ih_info_t {
+    pub index_size: hsize_t,
+    pub heap_size: hsize_t,
+}
+
+/// Object header info structure for HDF5 < 1.12
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Default)]
+pub struct H5O_hdr_info_t {
+    pub version: c_uint,
+    pub nmesgs: c_uint,
+    pub nchunks: c_uint,
+    pub flags: c_uint,
+    pub space: H5O_hdr_info_space_t,
+    pub mesg: H5O_hdr_info_mesg_t,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Default)]
+pub struct H5O_hdr_info_space_t {
+    pub total: hsize_t,
+    pub meta: hsize_t,
+    pub mesg: hsize_t,
+    pub free: hsize_t,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Default)]
+pub struct H5O_hdr_info_mesg_t {
+    pub present: u64,
+    pub shared: u64,
+}
+
+/// Meta size info structure for HDF5 < 1.12
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Default)]
+pub struct H5O_meta_size_t {
+    pub obj: H5_ih_info_t,
+    pub attr: H5_ih_info_t,
+}
+
 /// Object info structure for HDF5 < 1.12 (uses haddr_t instead of token)
+/// This must match the full H5O_info_t structure in HDF5 1.10.x
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct H5O_info1_t {
@@ -580,6 +625,8 @@ pub struct H5O_info1_t {
     pub ctime: i64,
     pub btime: i64,
     pub num_attrs: hsize_t,
+    pub hdr: H5O_hdr_info_t,
+    pub meta_size: H5O_meta_size_t,
 }
 
 #[repr(C)]
@@ -887,6 +934,40 @@ pub fn hdf5_version_at_least(major: u8, minor: u8, micro: u8) -> bool {
     }
 }
 
+/// Convert a raw HDF5 type value from H5Iget_type to our H5I_type_t enum.
+/// HDF5 1.12 added H5I_MAP and H5I_VOL which shifted all subsequent values.
+/// This function normalizes the raw value to match our HDF5 1.12+ enum.
+pub fn convert_h5i_type(raw: H5I_type_t) -> H5I_type_t {
+    // Our enum uses HDF5 1.12+ values. For HDF5 < 1.12, we need to convert.
+    // HDF5 1.10.x enum values:
+    //   FILE=1, GROUP=2, DATATYPE=3, DATASPACE=4, DATASET=5, ATTR=6,
+    //   REFERENCE=7 (deprecated), VFL=8, GENPROP_CLS=9, GENPROP_LST=10,
+    //   ERROR_CLASS=11, ERROR_MSG=12, ERROR_STACK=13, NTYPES=14
+    // HDF5 1.12+ enum values:
+    //   FILE=1, GROUP=2, DATATYPE=3, DATASPACE=4, DATASET=5, MAP=6, ATTR=7,
+    //   VFL=8, VOL=9, GENPROP_CLS=10, GENPROP_LST=11, ERROR_CLASS=12, ...
+    if hdf5_version_at_least(1, 12, 0) {
+        // No conversion needed for HDF5 1.12+
+        raw
+    } else {
+        // Convert HDF5 1.10.x values to our 1.12+ enum
+        let raw_val = raw as i32;
+        match raw_val {
+            v if v <= 5 => raw,                // FILE through DATASET - same
+            6 => H5I_type_t::H5I_ATTR,         // 1.10: ATTR=6 -> 1.12: ATTR=7
+            7 => H5I_type_t::H5I_BADID,        // 1.10: REFERENCE (deprecated), map to invalid
+            8 => H5I_type_t::H5I_VFL,          // 1.10: VFL=8 -> 1.12: VFL=8 (same)
+            9 => H5I_type_t::H5I_GENPROP_CLS,  // 1.10: GENPROP_CLS=9 -> 1.12: GENPROP_CLS=10
+            10 => H5I_type_t::H5I_GENPROP_LST, // 1.10: GENPROP_LST=10 -> 1.12: GENPROP_LST=11
+            11 => H5I_type_t::H5I_ERROR_CLASS, // 1.10: ERROR_CLASS=11 -> 1.12: ERROR_CLASS=12
+            12 => H5I_type_t::H5I_ERROR_MSG,   // 1.10: ERROR_MSG=12 -> 1.12: ERROR_MSG=13
+            13 => H5I_type_t::H5I_ERROR_STACK, // 1.10: ERROR_STACK=13 -> 1.12: ERROR_STACK=14
+            14 => H5I_type_t::H5I_NTYPES,      // 1.10: NTYPES=14
+            _ => H5I_type_t::H5I_BADID,
+        }
+    }
+}
+
 // =============================================================================
 // Function loading macros
 // =============================================================================
@@ -1087,7 +1168,6 @@ hdf5_function!(
         block: *mut hsize_t,
     ) -> herr_t
 );
-hdf5_function!(H5Sencode1, fn(obj_id: hid_t, buf: *mut c_void, nalloc: *mut size_t) -> herr_t);
 hdf5_function!(
     H5Sencode2,
     fn(obj_id: hid_t, buf: *mut c_void, nalloc: *mut size_t, fapl: hid_t) -> herr_t
@@ -1276,8 +1356,8 @@ hdf5_function!(
     ) -> herr_t
 );
 
-/// Alias for H5Literate2 (compatibility with code expecting H5Literate)
-#[inline]
+/// Version-dependent wrapper for H5Literate
+/// Uses H5Literate2 on HDF5 1.12.0+ and H5Literate on earlier versions
 pub unsafe fn H5Literate(
     grp_id: hid_t,
     idx_type: H5_index_t,
@@ -1286,7 +1366,30 @@ pub unsafe fn H5Literate(
     op: H5L_iterate2_t,
     op_data: *mut c_void,
 ) -> herr_t {
-    H5Literate2(grp_id, idx_type, order, idx, op, op_data)
+    if hdf5_version_at_least(1, 12, 0) {
+        H5Literate2(grp_id, idx_type, order, idx, op, op_data)
+    } else {
+        // In HDF5 1.10.x, the function is called "H5Literate" (no version suffix)
+        // H5L_info_t and H5L_info2_t have the same structure for our purposes
+        let lib = get_library();
+        type IterateFn = unsafe extern "C" fn(
+            hid_t,
+            H5_index_t,
+            H5_iter_order_t,
+            *mut hsize_t,
+            Option<
+                unsafe extern "C" fn(
+                    hid_t,
+                    *const c_char,
+                    *const H5L_info2_t,
+                    *mut c_void,
+                ) -> herr_t,
+            >,
+            *mut c_void,
+        ) -> herr_t;
+        let func: Symbol<IterateFn> = lib.get(b"H5Literate").expect("Failed to load H5Literate");
+        func(grp_id, idx_type, order, idx, op, op_data)
+    }
 }
 
 hdf5_function!(
@@ -1325,35 +1428,30 @@ hdf5_function!(H5Oget_comment, fn(obj_id: hid_t, comment: *mut c_char, bufsize: 
 
 // Pre-1.12 functions (loaded conditionally)
 
-/// H5Oget_info1 - Available in HDF5 < 1.12
-/// Returns None if the function is not available (HDF5 >= 1.12)
-pub unsafe fn H5Oget_info1(
-    loc_id: hid_t,
-    oinfo: *mut H5O_info1_t,
-    fields: c_uint,
-) -> Option<herr_t> {
+/// H5Oget_info1 - Available in HDF5 1.10.3+
+/// Note: H5Oget_info1 has only 2 parameters (no fields), unlike H5Oget_info2/3
+/// Returns None if the function is not available
+pub unsafe fn H5Oget_info1(loc_id: hid_t, oinfo: *mut H5O_info1_t) -> Option<herr_t> {
     let lib = get_library();
-    let func: Option<Symbol<unsafe extern "C" fn(hid_t, *mut H5O_info1_t, c_uint) -> herr_t>> =
+    let func: Option<Symbol<unsafe extern "C" fn(hid_t, *mut H5O_info1_t) -> herr_t>> =
         lib.get(b"H5Oget_info1").ok();
-    func.map(|f| f(loc_id, oinfo, fields))
+    func.map(|f| f(loc_id, oinfo))
 }
 
-/// H5Oget_info_by_name1 - Available in HDF5 < 1.12
-/// Returns None if the function is not available (HDF5 >= 1.12)
+/// H5Oget_info_by_name1 - Available in HDF5 1.10.3+
+/// Note: H5Oget_info_by_name1 has only 4 parameters (no fields), unlike version 2/3
+/// Returns None if the function is not available
 pub unsafe fn H5Oget_info_by_name1(
     loc_id: hid_t,
     name: *const c_char,
     oinfo: *mut H5O_info1_t,
-    fields: c_uint,
     lapl_id: hid_t,
 ) -> Option<herr_t> {
     let lib = get_library();
     let func: Option<
-        Symbol<
-            unsafe extern "C" fn(hid_t, *const c_char, *mut H5O_info1_t, c_uint, hid_t) -> herr_t,
-        >,
+        Symbol<unsafe extern "C" fn(hid_t, *const c_char, *mut H5O_info1_t, hid_t) -> herr_t>,
     > = lib.get(b"H5Oget_info_by_name1").ok();
-    func.map(|f| f(loc_id, name, oinfo, fields, lapl_id))
+    func.map(|f| f(loc_id, name, oinfo, lapl_id))
 }
 
 /// H5Oopen_by_addr - Available in all HDF5 versions
@@ -1362,6 +1460,26 @@ pub unsafe fn H5Oopen_by_addr(loc_id: hid_t, addr: haddr_t) -> hid_t {
     let func: Symbol<unsafe extern "C" fn(hid_t, haddr_t) -> hid_t> =
         lib.get(b"H5Oopen_by_addr").expect("Failed to load H5Oopen_by_addr");
     func(loc_id, addr)
+}
+
+/// H5Sencode - Version-dependent wrapper
+/// Uses H5Sencode2 on HDF5 1.12.0+ and original H5Sencode on earlier versions
+pub unsafe fn H5Sencode(
+    obj_id: hid_t,
+    buf: *mut c_void,
+    nalloc: *mut size_t,
+    fapl: hid_t,
+) -> herr_t {
+    if hdf5_version_at_least(1, 12, 0) {
+        H5Sencode2(obj_id, buf, nalloc, fapl)
+    } else {
+        // In HDF5 1.10.x, the function is called "H5Sencode" (not "H5Sencode1")
+        // Load it dynamically with the correct symbol name
+        let lib = get_library();
+        let func: Symbol<unsafe extern "C" fn(hid_t, *mut c_void, *mut size_t) -> herr_t> =
+            lib.get(b"H5Sencode").expect("Failed to load H5Sencode");
+        func(obj_id, buf, nalloc)
+    }
 }
 
 // H5P (Property List)
@@ -1793,6 +1911,35 @@ macro_rules! define_native_type {
             pub fn $name() -> hid_t { [<$name _get>]() }
         }
     };
+    // Variant that uses version-dependent symbol names (for version compatibility)
+    // First symbol is for HDF5 1.12+, second is for HDF5 1.10.x
+    // In HDF5 < 1.12, the _ID_g symbols exist but contain invalid values,
+    // so we must use the _g symbols instead.
+    ($name:ident, $symbol_new:literal, $symbol_old:literal) => {
+        paste::paste! {
+            static [<_ $name _STORAGE>]: OnceLock<hid_t> = OnceLock::new();
+
+            pub fn [<$name _get>]() -> hid_t {
+                *[<_ $name _STORAGE>].get_or_init(|| {
+                    let lib = get_library();
+                    unsafe {
+                        // Use version to determine which symbol to load
+                        // HDF5 1.12+ uses _ID_g symbols, older versions use _g symbols
+                        let symbol_name = if hdf5_version_at_least(1, 12, 0) {
+                            $symbol_new
+                        } else {
+                            $symbol_old
+                        };
+                        let id_ptr: Symbol<*const hid_t> = lib.get(symbol_name.as_bytes())
+                            .expect(concat!("Failed to load ", $symbol_new, " or ", $symbol_old));
+                        **id_ptr
+                    }
+                })
+            }
+
+            pub fn $name() -> hid_t { [<$name _get>]() }
+        }
+    };
 }
 
 define_native_type!(H5T_NATIVE_INT8, "H5T_NATIVE_INT8_g");
@@ -2056,7 +2203,7 @@ define_native_type!(H5E_WRITEERROR, "H5E_WRITEERROR_g");
 // Property list class and default IDs (loaded at runtime)
 // =============================================================================
 
-// Property list classes
+// Property list classes (always use _ID_g suffix - the _g symbols are internal and contain different values)
 define_native_type!(H5P_CLS_ROOT, "H5P_CLS_ROOT_ID_g");
 define_native_type!(H5P_CLS_OBJECT_CREATE, "H5P_CLS_OBJECT_CREATE_ID_g");
 define_native_type!(H5P_CLS_FILE_CREATE, "H5P_CLS_FILE_CREATE_ID_g");
@@ -2075,7 +2222,7 @@ define_native_type!(H5P_CLS_OBJECT_COPY, "H5P_CLS_OBJECT_COPY_ID_g");
 define_native_type!(H5P_CLS_LINK_CREATE, "H5P_CLS_LINK_CREATE_ID_g");
 define_native_type!(H5P_CLS_LINK_ACCESS, "H5P_CLS_LINK_ACCESS_ID_g");
 
-// Default property lists
+// Default property lists (always use _ID_g suffix - present in all HDF5 versions)
 define_native_type!(H5P_LST_FILE_CREATE, "H5P_LST_FILE_CREATE_ID_g");
 define_native_type!(H5P_LST_FILE_ACCESS, "H5P_LST_FILE_ACCESS_ID_g");
 define_native_type!(H5P_LST_DATASET_CREATE, "H5P_LST_DATASET_CREATE_ID_g");
