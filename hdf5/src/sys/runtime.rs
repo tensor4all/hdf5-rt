@@ -175,7 +175,8 @@ pub enum H5T_class_t {
     H5T_ENUM = 8,
     H5T_VLEN = 9,
     H5T_ARRAY = 10,
-    H5T_NCLASSES = 11,
+    H5T_COMPLEX = 11, // New in HDF5 2.0
+    H5T_NCLASSES = 12,
 }
 
 #[repr(C)]
