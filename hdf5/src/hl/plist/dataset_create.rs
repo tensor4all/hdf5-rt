@@ -776,8 +776,8 @@ impl DatasetCreate {
     }
 
     /// Returns a copy of the dataset creation property list.
-    pub fn copy(&self) -> Self {
-        unsafe { self.deref().copy().cast_unchecked() }
+    pub fn copy(&self) -> Result<Self> {
+        Ok(unsafe { self.deref().copy()?.cast_unchecked() })
     }
 
     /// Returns a builder for configuring a dataset creation property list.

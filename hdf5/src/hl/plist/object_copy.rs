@@ -161,8 +161,8 @@ impl ObjectCopy {
         Self::from_id(h5try!(H5Pcreate(*H5P_OBJECT_COPY)))
     }
 
-    pub fn copy(&self) -> Self {
-        unsafe { self.deref().copy().cast_unchecked() }
+    pub fn copy(&self) -> Result<Self> {
+        Ok(unsafe { self.deref().copy()?.cast_unchecked() })
     }
 
     pub fn build() -> ObjectCopyBuilder {

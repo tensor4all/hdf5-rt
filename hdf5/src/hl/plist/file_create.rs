@@ -446,8 +446,8 @@ impl FileCreate {
     }
 
     /// Creates a copy of the file creation property list.
-    pub fn copy(&self) -> Self {
-        unsafe { self.deref().copy().cast_unchecked() }
+    pub fn copy(&self) -> Result<Self> {
+        Ok(unsafe { self.deref().copy()?.cast_unchecked() })
     }
 
     /// Returns a builder for configuring a file creation property list.
@@ -491,7 +491,7 @@ impl FileCreate {
 
     #[doc(hidden)]
     pub fn get_shared_mesg_indexes(&self) -> Result<Vec<SharedMessageIndex>> {
-        let n = h5get_d!(H5Pget_shared_mesg_nindexes(self.id()): c_uint);
+        let n = h5get!(H5Pget_shared_mesg_nindexes(self.id()): c_uint)?;
         let mut indexes = Vec::with_capacity(n as _);
         for i in 0..n {
             let (mut flags, mut min_size): (c_uint, c_uint) = (0, 0);

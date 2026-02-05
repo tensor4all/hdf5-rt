@@ -158,8 +158,8 @@ impl FromStr for PropertyListClass {
 #[allow(clippy::len_without_is_empty)]
 impl PropertyList {
     /// Copies the property list.
-    pub fn copy(&self) -> Self {
-        Self::from_id(h5lock!(H5Pcopy(self.id()))).unwrap_or_else(|_| Self::invalid())
+    pub fn copy(&self) -> Result<Self> {
+        Self::from_id(h5try!(H5Pcopy(self.id())))
     }
 
     /// Queries whether a property name exists in the property list.
@@ -304,7 +304,7 @@ pub mod tests {
     pub fn test_clone() {
         let (fapl, _) = make_plists();
         assert!(fapl.is_valid());
-        let fapl_c = fapl.copy();
+        let fapl_c = fapl.copy().unwrap();
         assert!(fapl.is_valid());
         assert!(fapl_c.is_valid());
         assert_eq!(fapl.refcount(), 1);

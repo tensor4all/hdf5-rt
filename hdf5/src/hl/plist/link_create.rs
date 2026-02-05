@@ -147,8 +147,8 @@ impl LinkCreate {
     }
 
     /// Creates a copy of the link creation property list.
-    pub fn copy(&self) -> Self {
-        unsafe { self.deref().copy().cast_unchecked() }
+    pub fn copy(&self) -> Result<Self> {
+        Ok(unsafe { self.deref().copy()?.cast_unchecked() })
     }
 
     /// Returns a builder for configuring a link creation property list.

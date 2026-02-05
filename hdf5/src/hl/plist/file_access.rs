@@ -1708,8 +1708,8 @@ impl FileAccess {
     }
 
     /// Creates a copy of the property list.
-    pub fn copy(&self) -> Self {
-        unsafe { self.deref().copy().cast_unchecked() }
+    pub fn copy(&self) -> Result<Self> {
+        Ok(unsafe { self.deref().copy()?.cast_unchecked() })
     }
 
     /// Creates a new file access property list builder.
