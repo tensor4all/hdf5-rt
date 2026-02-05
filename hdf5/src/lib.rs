@@ -10,7 +10,7 @@
 //!
 //! Direct low-level bindings are also available and provided in the `hdf5-sys` crate.
 //!
-//! Requires `HDF5` library of version 1.8.4 or later. Newer versions will enable additional
+//! Requires `HDF5` library of version 1.12.0 or later. Newer versions will enable additional
 //! features of the library. Such items are marked in the documentation with a version number
 //! indicating the required version of `HDF5`. The `have-direct` and `have-parallel` features
 //! also indicates `HDF5` functionality.
@@ -79,7 +79,6 @@ mod export {
 
     /// Multi-dimensional datasets.
     pub mod dataset {
-        #[cfg(feature = "1.10.5")]
         pub use crate::hl::chunks::ChunkInfo;
         #[cfg(all(feature = "1.14.0", feature = "link"))]
         pub use crate::hl::chunks::ChunkInfoRef;
@@ -206,17 +205,10 @@ pub fn library_version() -> (u8, u8, u8) {
 
 /// Returns true if the HDF5 library is threadsafe.
 pub fn is_library_threadsafe() -> bool {
-    #[cfg(feature = "1.8.16")]
-    {
-        use self::internal_prelude::hbool_t;
-        use crate::sys::h5::H5is_library_threadsafe;
-        let mut ts: hbool_t = 0;
-        h5call!(H5is_library_threadsafe(&mut ts)).map(|_| ts > 0).unwrap_or(false)
-    }
-    #[cfg(not(feature = "1.8.16"))]
-    {
-        cfg!(feature = "threadsafe")
-    }
+    use self::internal_prelude::hbool_t;
+    use crate::sys::h5::H5is_library_threadsafe;
+    let mut ts: hbool_t = 0;
+    h5call!(H5is_library_threadsafe(&mut ts)).map(|_| ts > 0).unwrap_or(false)
 }
 
 /// HDF5 library version used at link time.
@@ -234,7 +226,7 @@ pub mod tests {
 
     #[test]
     pub fn test_minimum_library_version() {
-        assert!(library_version() >= (1, 8, 4));
+        assert!(library_version() >= (1, 12, 0));
     }
 
     #[test]

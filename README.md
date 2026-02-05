@@ -23,9 +23,13 @@ This is a simplified fork of hdf5-metno with:
 hdf5 = { git = "https://github.com/shinaoka/tensor4all-hdf5-ffi" }
 ```
 
+## Requirements
+
+- **HDF5 1.12.0 or later** - The library uses HDF5 1.12+ features
+
 ## Building
 
-Requires HDF5 library installed on your system:
+Requires HDF5 library (version 1.12.0+) installed on your system:
 
 ```bash
 # Ubuntu/Debian

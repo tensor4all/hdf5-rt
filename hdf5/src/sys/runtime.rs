@@ -551,20 +551,6 @@ pub const H5_SZIP_MAX_PIXELS_PER_BLOCK: c_uint = 32;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct H5O_info1_t {
-    pub fileno: c_ulong,
-    pub addr: haddr_t,
-    pub type_: H5O_type_t,
-    pub rc: c_uint,
-    pub atime: i64,
-    pub mtime: i64,
-    pub ctime: i64,
-    pub btime: i64,
-    pub num_attrs: hsize_t,
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
 pub struct H5O_info2_t {
     pub fileno: c_ulong,
     pub token: H5O_token_t,
@@ -723,33 +709,11 @@ pub struct H5AC_cache_image_config_t {
 pub const H5AC__CACHE_IMAGE__ENTRY_AGEOUT__NONE: c_int = -1;
 
 // =============================================================================
-// Additional structs (v1 legacy)
+// Additional structs
 // =============================================================================
 
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct H5L_info1_t {
-    pub type_: H5L_type_t,
-    pub corder_valid: hbool_t,
-    pub corder: i64,
-    pub cset: H5T_cset_t,
-    pub u: H5L_info1_t_u,
-}
-
-pub type H5L_info_t = H5L_info1_t;
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union H5L_info1_t_u {
-    pub address: haddr_t,
-    pub val_size: size_t,
-}
-
-impl std::fmt::Debug for H5L_info1_t_u {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("H5L_info1_t_u").finish()
-    }
-}
+/// Alias for H5L_info2_t (v1 alias for compatibility)
+pub type H5L_info_t = H5L_info2_t;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -777,13 +741,12 @@ pub type H5E_auto2_t = Option<unsafe extern "C" fn(hid_t, *mut c_void) -> herr_t
 pub type H5A_operator2_t =
     Option<unsafe extern "C" fn(hid_t, *const c_char, *const H5A_info_t, *mut c_void) -> herr_t>;
 
-/// Link iteration operator (v1)
-pub type H5L_iterate_t =
-    Option<unsafe extern "C" fn(hid_t, *const c_char, *const H5L_info_t, *mut c_void) -> herr_t>;
-
 /// Link iteration operator (v2)
 pub type H5L_iterate2_t =
     Option<unsafe extern "C" fn(hid_t, *const c_char, *const H5L_info2_t, *mut c_void) -> herr_t>;
+
+/// Alias for H5L_iterate2_t (compatibility)
+pub type H5L_iterate_t = H5L_iterate2_t;
 
 // =============================================================================
 // Version info
@@ -849,6 +812,27 @@ pub fn init(path: Option<&str>) -> Result<(), String> {
         H5open();
     }
 
+    // Check HDF5 version (require 1.12.0 or later)
+    check_hdf5_version()?;
+
+    Ok(())
+}
+
+/// Check that the HDF5 library version is at least 1.12.0.
+/// Returns an error if the version is too old.
+fn check_hdf5_version() -> Result<(), String> {
+    let mut major: c_uint = 0;
+    let mut minor: c_uint = 0;
+    let mut release: c_uint = 0;
+    unsafe {
+        H5get_libversion(&mut major, &mut minor, &mut release);
+    }
+    if major < 1 || (major == 1 && minor < 12) {
+        return Err(format!(
+            "HDF5 {}.{}.{} is not supported. Minimum required version is 1.12.0",
+            major, minor, release
+        ));
+    }
     Ok(())
 }
 
@@ -1238,30 +1222,6 @@ hdf5_function!(
     ) -> herr_t
 );
 hdf5_function!(
-    H5Literate1,
-    fn(
-        grp_id: hid_t,
-        idx_type: H5_index_t,
-        order: H5_iter_order_t,
-        idx: *mut hsize_t,
-        op: H5L_iterate_t,
-        op_data: *mut c_void,
-    ) -> herr_t
-);
-
-/// Alias for backwards compatibility (H5Literate was renamed to H5Literate1 in HDF5 1.12+)
-#[inline]
-pub unsafe fn H5Literate(
-    grp_id: hid_t,
-    idx_type: H5_index_t,
-    order: H5_iter_order_t,
-    idx: *mut hsize_t,
-    op: H5L_iterate_t,
-    op_data: *mut c_void,
-) -> herr_t {
-    H5Literate1(grp_id, idx_type, order, idx, op, op_data)
-}
-hdf5_function!(
     H5Literate2,
     fn(
         grp_id: hid_t,
@@ -1274,6 +1234,20 @@ hdf5_function!(
         op_data: *mut c_void,
     ) -> herr_t
 );
+
+/// Alias for H5Literate2 (compatibility with code expecting H5Literate)
+#[inline]
+pub unsafe fn H5Literate(
+    grp_id: hid_t,
+    idx_type: H5_index_t,
+    order: H5_iter_order_t,
+    idx: *mut hsize_t,
+    op: H5L_iterate2_t,
+    op_data: *mut c_void,
+) -> herr_t {
+    H5Literate2(grp_id, idx_type, order, idx, op, op_data)
+}
+
 hdf5_function!(
     H5Lget_info2,
     fn(loc_id: hid_t, name: *const c_char, linfo: *mut H5L_info2_t, lapl_id: hid_t) -> herr_t
@@ -1307,25 +1281,6 @@ hdf5_function!(
 hdf5_function!(H5Oopen_by_token, fn(loc_id: hid_t, token: H5O_token_t) -> hid_t);
 hdf5_function!(H5Oset_comment, fn(obj_id: hid_t, comment: *const c_char) -> herr_t);
 hdf5_function!(H5Oget_comment, fn(obj_id: hid_t, comment: *mut c_char, bufsize: size_t) -> ssize_t);
-
-// Legacy H5O functions (v1.10)
-hdf5_function!(H5Oget_info1, fn(loc_id: hid_t, oinfo: *mut H5O_info1_t) -> herr_t);
-hdf5_function!(
-    H5Oget_info_by_name1,
-    fn(loc_id: hid_t, name: *const c_char, oinfo: *mut H5O_info1_t, lapl_id: hid_t) -> herr_t
-);
-hdf5_function!(H5Oget_info2, fn(loc_id: hid_t, oinfo: *mut H5O_info2_t, fields: c_uint) -> herr_t);
-hdf5_function!(
-    H5Oget_info_by_name2,
-    fn(
-        loc_id: hid_t,
-        name: *const c_char,
-        oinfo: *mut H5O_info2_t,
-        fields: c_uint,
-        lapl_id: hid_t,
-    ) -> herr_t
-);
-hdf5_function!(H5Oopen_by_addr, fn(loc_id: hid_t, addr: haddr_t) -> hid_t);
 
 // H5P (Property List)
 hdf5_function!(H5Pcreate, fn(cls_id: hid_t) -> hid_t);

@@ -282,7 +282,7 @@ pub mod h5i {
 #[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5l {
     pub use super::runtime::{
-        H5L_info1_t, H5L_info2_t, H5L_info_t, H5L_iterate_t, H5L_type_t, H5Lcreate_external,
+        H5L_info2_t, H5L_info_t, H5L_iterate2_t, H5L_iterate_t, H5L_type_t, H5Lcreate_external,
         H5Lcreate_hard, H5Lcreate_soft, H5Ldelete, H5Lexists, H5Lget_info2, H5Literate,
         H5Literate2, H5Lmove, H5L_SAME_LOC,
     };
@@ -291,10 +291,9 @@ pub mod h5l {
 #[cfg(all(feature = "runtime-loading", not(feature = "link")))]
 pub mod h5o {
     pub use super::runtime::{
-        H5O_info1_t, H5O_info2_t, H5O_token_t, H5O_type_t, H5Oclose, H5Ocopy, H5Oget_comment,
-        H5Oget_info1, H5Oget_info2, H5Oget_info3, H5Oget_info_by_name1, H5Oget_info_by_name2,
-        H5Oget_info_by_name3, H5Oopen, H5Oopen_by_addr, H5Oopen_by_token, H5Oset_comment,
-        H5O_COPY_ALL, H5O_COPY_EXPAND_EXT_LINK_FLAG, H5O_COPY_EXPAND_REFERENCE_FLAG,
+        H5O_info2_t, H5O_token_t, H5O_type_t, H5Oclose, H5Ocopy, H5Oget_comment, H5Oget_info3,
+        H5Oget_info_by_name3, H5Oopen, H5Oopen_by_token, H5Oset_comment, H5O_COPY_ALL,
+        H5O_COPY_EXPAND_EXT_LINK_FLAG, H5O_COPY_EXPAND_REFERENCE_FLAG,
         H5O_COPY_EXPAND_SOFT_LINK_FLAG, H5O_COPY_MERGE_COMMITTED_DTYPE_FLAG,
         H5O_COPY_PRESERVE_NULL_FLAG, H5O_COPY_SHALLOW_HIERARCHY_FLAG, H5O_COPY_WITHOUT_ATTR_FLAG,
         H5O_INFO_ALL, H5O_INFO_BASIC, H5O_INFO_NUM_ATTRS, H5O_INFO_TIME, H5O_SHMESG_ALL_FLAG,

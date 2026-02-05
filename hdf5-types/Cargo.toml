@@ -15,14 +15,11 @@ homepage.workspace = true
 edition.workspace = true
 
 [features]
-h5-alloc = []
 complex = ["dep:num-complex"]
 f16 = ["dep:half"]
 
 [dependencies]
 ascii = "1.1"
-cfg-if = { workspace = true }
-hdf5-sys = { workspace = true }
 libc = { workspace = true }
 num-complex = { workspace = true, optional = true }
 half = { workspace = true, optional = true }
