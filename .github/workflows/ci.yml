@@ -14,6 +14,8 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # HDF5 library path for runtime loading on Ubuntu
+  LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu/hdf5/serial
 
 jobs:
   lint:
