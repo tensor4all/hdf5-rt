@@ -86,6 +86,8 @@ pub fn library_path() -> Option<String> {
 }
 
 // Macro to generate function wrappers that load from the dynamic library
+// TODO: Use this macro to wrap all HDF5 functions for runtime-loading
+#[allow(unused_macros)]
 macro_rules! hdf5_func {
     ($name:ident, $sig:ty) => {
         pub unsafe fn $name() -> $sig {
