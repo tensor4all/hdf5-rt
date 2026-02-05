@@ -2270,15 +2270,22 @@ mod tests {
             version.micro
         );
 
-        // Major version should be 1
-        assert_eq!(version.major, 1, "Major version should be 1");
-
-        // Minor version should be reasonable (between 10 and 20 for foreseeable future)
+        // Major version should be 1 or 2 (HDF5 2.0 released)
         assert!(
-            version.minor >= 10 && version.minor <= 20,
-            "Minor version {} should be between 10 and 20",
-            version.minor
+            version.major == 1 || version.major == 2,
+            "Major version {} should be 1 or 2",
+            version.major
         );
+
+        // For HDF5 1.x, minor version should be at least 10
+        // For HDF5 2.x, minor version starts from 0
+        if version.major == 1 {
+            assert!(
+                version.minor >= 10,
+                "For HDF5 1.x, minor version {} should be at least 10",
+                version.minor
+            );
+        }
     }
 
     #[test]
