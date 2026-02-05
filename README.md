@@ -46,3 +46,4 @@ at your option.
 ## Acknowledgments
 
 Based on [hdf5-metno](https://github.com/metno/hdf5-rust) by Magnus Ulimoen and contributors.
+
