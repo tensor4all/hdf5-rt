@@ -10,3 +10,9 @@ target/
 sweep.timestamp
 .cargo/
 .cargo/config.toml
+
+# Julia
+tests/julia/Manifest.toml
+
+# Python virtual environment
+tests/python/.venv/
