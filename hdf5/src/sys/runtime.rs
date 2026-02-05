@@ -771,6 +771,7 @@ pub const HDF5_VERSION: Version = Version { major: 1, minor: 14, micro: 0 };
 
 static LIBRARY: OnceLock<Library> = OnceLock::new();
 static LIBRARY_PATH: OnceLock<String> = OnceLock::new();
+static HDF5_RUNTIME_VERSION: OnceLock<Version> = OnceLock::new();
 
 /// Thread-safety lock
 pub static LOCK: ReentrantMutex<()> = ReentrantMutex::new(());
@@ -816,13 +817,13 @@ pub fn init(path: Option<&str>) -> Result<(), String> {
         H5open();
     }
 
-    // Check HDF5 version (require 1.12.0 or later)
+    // Check HDF5 version (require 1.10.5 or later)
     check_hdf5_version()?;
 
     Ok(())
 }
 
-/// Check that the HDF5 library version is at least 1.12.0.
+/// Check that the HDF5 library version is at least 1.10.5 and store the version.
 /// Returns an error if the version is too old.
 fn check_hdf5_version() -> Result<(), String> {
     let mut major: c_uint = 0;
@@ -831,9 +832,15 @@ fn check_hdf5_version() -> Result<(), String> {
     unsafe {
         H5get_libversion(&mut major, &mut minor, &mut release);
     }
-    if major < 1 || (major == 1 && minor < 12) {
+
+    // Store the version for later use
+    let version = Version { major: major as u8, minor: minor as u8, micro: release as u8 };
+    let _ = HDF5_RUNTIME_VERSION.set(version);
+
+    // Check minimum version: 1.10.5
+    if major < 1 || (major == 1 && minor < 10) || (major == 1 && minor == 10 && release < 5) {
         return Err(format!(
-            "HDF5 {}.{}.{} is not supported. Minimum required version is 1.12.0",
+            "HDF5 {}.{}.{} is not supported. Minimum required version is 1.10.5",
             major, minor, release
         ));
     }
@@ -848,6 +855,21 @@ pub fn is_initialized() -> bool {
 /// Get the library path.
 pub fn library_path() -> Option<String> {
     LIBRARY_PATH.get().cloned()
+}
+
+/// Get the runtime HDF5 library version.
+/// Returns None if the library has not been initialized.
+pub fn hdf5_version() -> Option<Version> {
+    HDF5_RUNTIME_VERSION.get().copied()
+}
+
+/// Check if the HDF5 library version is at least the specified version.
+/// Returns false if the library has not been initialized.
+pub fn hdf5_version_at_least(major: u8, minor: u8, micro: u8) -> bool {
+    match HDF5_RUNTIME_VERSION.get() {
+        Some(version) => *version >= Version { major, minor, micro },
+        None => false,
+    }
 }
 
 // =============================================================================
@@ -2012,3 +2034,36 @@ define_native_type!(H5P_LST_ATTRIBUTE_CREATE, "H5P_LST_ATTRIBUTE_CREATE_ID_g");
 define_native_type!(H5P_LST_OBJECT_COPY, "H5P_LST_OBJECT_COPY_ID_g");
 define_native_type!(H5P_LST_LINK_CREATE, "H5P_LST_LINK_CREATE_ID_g");
 define_native_type!(H5P_LST_LINK_ACCESS, "H5P_LST_LINK_ACCESS_ID_g");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hdf5_version_stored() {
+        // Initialize HDF5 library
+        init(None).expect("Failed to initialize HDF5");
+
+        // Version should be accessible after init
+        let version = hdf5_version().expect("Version should be stored after init");
+
+        // Version should be at least 1.10.5 (our minimum)
+        assert!(
+            hdf5_version_at_least(1, 10, 5),
+            "Version {}.{}.{} should be at least 1.10.5",
+            version.major,
+            version.minor,
+            version.micro
+        );
+
+        // Major version should be 1
+        assert_eq!(version.major, 1, "Major version should be 1");
+
+        // Minor version should be reasonable (between 10 and 20 for foreseeable future)
+        assert!(
+            version.minor >= 10 && version.minor <= 20,
+            "Minor version {} should be between 10 and 20",
+            version.minor
+        );
+    }
+}
