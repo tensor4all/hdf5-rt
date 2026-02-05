@@ -20,7 +20,7 @@ edition = "2021"
 cfg-if = "1.0"
 half = { version = "2.2", default-features = false }
 libc = "0.2"
-libloading = "0.8"
+libloading = "0.9"
 num-complex = { version = "0.4", default-features = false }
 
 # internal
