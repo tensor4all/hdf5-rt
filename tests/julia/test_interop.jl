@@ -27,9 +27,7 @@ end
 
 # Get the HDF5 library path from HDF5_jll
 function get_hdf5_lib_path()
-    # HDF5_jll provides the path to the HDF5 library
-    libhdf5_path = HDF5_jll.libhdf5_path
-    return libhdf5_path
+    return HDF5_jll.libhdf5_path
 end
 
 # Get all JLL dependency library paths needed for dlopen
@@ -39,7 +37,6 @@ function get_jll_lib_paths()
     if isdefined(HDF5_jll, :LIBPATH_list)
         return HDF5_jll.LIBPATH_list
     else
-        # Fallback: just the directory containing libhdf5
         return [dirname(get_hdf5_lib_path())]
     end
 end
@@ -81,7 +78,6 @@ function run_rust_binary(binary_path::String, hdf5_lib::String, mode::String, fi
     println("Running: $cmd")
 
     # Set LD_LIBRARY_PATH so the Rust binary can dlopen HDF5 and its dependencies
-    # Include all JLL dependency paths (Zlib_jll, libaec_jll, etc.)
     jll_paths = get_jll_lib_paths()
     env = copy(ENV)
     ld_path = get(env, "LD_LIBRARY_PATH", "")
@@ -90,7 +86,7 @@ function run_rust_binary(binary_path::String, hdf5_lib::String, mode::String, fi
     println("  LD_LIBRARY_PATH: $(env["LD_LIBRARY_PATH"])")
     cmd = setenv(cmd, env)
 
-    # Run and capture output (ignorestatus to avoid exception on non-zero exit)
+    # Run and capture output
     output = read(cmd, String)
     println("stdout: $output")
 
@@ -103,7 +99,6 @@ function create_julia_test_file(filepath::String)
 
     h5open(filepath, "w") do file
         # Write scalar attribute to root group
-        # Use attrs() interface which works across HDF5.jl versions
         attrs(file)["test_attr"] = "hello from julia/python"
 
         # Write 1D integer dataset
@@ -128,8 +123,7 @@ function verify_rust_test_file(filepath::String)
 
     h5open(filepath, "r") do file
         # Read and verify attribute
-        # Use attrs() interface which works across HDF5.jl versions
-        attr_value = read(attrs(file), "test_attr")
+        attr_value = read_attribute(file, "test_attr")
         @test attr_value == "hello from rust"
         println("  Attribute 'test_attr': $attr_value")
 
@@ -163,7 +157,7 @@ function run_tests()
 
     # Get HDF5 library path
     hdf5_lib = get_hdf5_lib_path()
-    println("HDF5 library path: $hdf5_lib")
+    println("HDF5 library: $hdf5_lib")
 
     # Print HDF5 version
     hdf5_version = h5_get_libversion()

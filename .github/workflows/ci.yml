@@ -106,16 +106,8 @@ jobs:
         run: cargo test --workspace --verbose
 
   interop-julia:
-    name: Julia interop (${{ matrix.hdf5_source }})
+    name: Julia interop
     runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Use HDF5_jll bundled with Julia (no system HDF5 needed)
-          - hdf5_source: "jll"
-          # Use system HDF5 from apt
-          - hdf5_source: "system"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -125,22 +117,7 @@ jobs:
         uses: julia-actions/setup-julia@v2
         with:
           version: '1.11'
-      - name: Install system HDF5
-        if: matrix.hdf5_source == 'system'
-        run: sudo apt-get update && sudo apt-get install -y libhdf5-dev pkg-config
-      - name: Configure Julia to use system HDF5
-        if: matrix.hdf5_source == 'system'
-        run: |
-          cd tests/julia
-          HDF5_LIBDIR=$(pkg-config --variable=libdir hdf5_serial 2>/dev/null || echo /usr/lib/x86_64-linux-gnu/hdf5/serial)
-          echo "LD_LIBRARY_PATH=$HDF5_LIBDIR:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          julia --project=. -e "
-            using Pkg; Pkg.instantiate()
-            using HDF5
-            HDF5.API.set_libraries!(\"$HDF5_LIBDIR/libhdf5.so\", \"$HDF5_LIBDIR/libhdf5_hl.so\")
-          "
       - name: Setup Julia project
-        if: matrix.hdf5_source == 'jll'
         run: |
           cd tests/julia
           julia --project=. -e 'using Pkg; Pkg.instantiate()'
