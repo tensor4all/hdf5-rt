@@ -1780,9 +1780,6 @@ impl FileAccess {
         debug_assert_eq!(FD_MEM_TYPES.len(), N as _);
         let mut memb_map: [H5F_mem_t; N] = unsafe { mem::zeroed() };
         let mut memb_fapl: [hid_t; N] = unsafe { mem::zeroed() };
-        #[cfg(feature = "link")]
-        let mut memb_name: [*const c_char; N] = unsafe { mem::zeroed() };
-        #[cfg(all(feature = "runtime-loading", not(feature = "link")))]
         let mut memb_name: [*mut c_char; N] = unsafe { mem::zeroed() };
         let mut memb_addr: [haddr_t; N] = unsafe { mem::zeroed() };
         let mut relax: hbool_t = 0;

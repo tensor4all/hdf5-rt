@@ -8,12 +8,9 @@ thread_local! {
 }
 
 pub(crate) static LIBRARY_INIT: LazyLock<()> = LazyLock::new(|| {
-    // In runtime-loading mode, initialize the library first
-    #[cfg(all(feature = "runtime-loading", not(feature = "link")))]
-    {
-        if !crate::sys::is_initialized() {
-            crate::sys::init(None).expect("Failed to initialize HDF5 library");
-        }
+    // Initialize the HDF5 library via dlopen
+    if !crate::sys::is_initialized() {
+        crate::sys::init(None).expect("Failed to initialize HDF5 library");
     }
 
     let _guard = crate::sys::LOCK.lock();

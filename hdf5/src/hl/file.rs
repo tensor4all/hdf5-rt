@@ -451,10 +451,8 @@ pub mod tests {
             assert!(file.size() > 0);
             let orig_size = fs::metadata(file.filename()).unwrap().len();
             assert!(file.size() > orig_size);
-            #[cfg(feature = "1.10.0")]
+            // HDF5 1.12+ always has some initial file content before flush
             assert_ne!(orig_size, 0);
-            #[cfg(not(feature = "1.10.0"))]
-            assert_eq!(orig_size, 0);
             assert!(file.flush().is_ok());
             assert!(file.size() > 0);
             let new_size = fs::metadata(file.filename()).unwrap().len();
