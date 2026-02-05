@@ -107,7 +107,7 @@ jobs:
 
   interop-julia:
     name: Julia interop (${{ matrix.hdf5_source }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:

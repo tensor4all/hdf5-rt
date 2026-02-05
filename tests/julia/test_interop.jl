@@ -32,6 +32,18 @@ function get_hdf5_lib_path()
     return libhdf5_path
 end
 
+# Get all JLL dependency library paths needed for dlopen
+function get_jll_lib_paths()
+    # HDF5_jll.LIBPATH_list contains all directories needed for dependencies
+    # (Zlib_jll, libaec_jll, etc.)
+    if isdefined(HDF5_jll, :LIBPATH_list)
+        return HDF5_jll.LIBPATH_list
+    else
+        # Fallback: just the directory containing libhdf5
+        return [dirname(get_hdf5_lib_path())]
+    end
+end
+
 # Get project root directory (two levels up from this script)
 function get_project_root()
     return dirname(dirname(dirname(@__FILE__)))
@@ -69,10 +81,13 @@ function run_rust_binary(binary_path::String, hdf5_lib::String, mode::String, fi
     println("Running: $cmd")
 
     # Set LD_LIBRARY_PATH so the Rust binary can dlopen HDF5 and its dependencies
-    hdf5_libdir = dirname(hdf5_lib)
+    # Include all JLL dependency paths (Zlib_jll, libaec_jll, etc.)
+    jll_paths = get_jll_lib_paths()
     env = copy(ENV)
     ld_path = get(env, "LD_LIBRARY_PATH", "")
-    env["LD_LIBRARY_PATH"] = isempty(ld_path) ? hdf5_libdir : "$hdf5_libdir:$ld_path"
+    all_paths = join(jll_paths, ":")
+    env["LD_LIBRARY_PATH"] = isempty(ld_path) ? all_paths : "$all_paths:$ld_path"
+    println("  LD_LIBRARY_PATH: $(env["LD_LIBRARY_PATH"])")
     cmd = setenv(cmd, env)
 
     # Run and capture output (ignorestatus to avoid exception on non-zero exit)
