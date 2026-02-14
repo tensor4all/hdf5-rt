@@ -38,7 +38,7 @@ pub(crate) fn chunk_info(ds: &Dataset, index: usize) -> Option<ChunkInfo> {
     }
     h5lock!(ds.space().map_or(None, |s| {
         let mut chunk_info = ChunkInfo::new(ds.ndim());
-        h5check(H5Dget_chunk_info(
+        H5Dget_chunk_info(
             ds.id(),
             s.id(),
             index as _,
@@ -46,9 +46,8 @@ pub(crate) fn chunk_info(ds: &Dataset, index: usize) -> Option<ChunkInfo> {
             &mut chunk_info.filter_mask,
             &mut chunk_info.addr,
             &mut chunk_info.size,
-        ))
-        .map(|_| chunk_info)
-        .ok()
+        )
+        .and_then(|ret| h5check(ret).map(|_| chunk_info).ok())
     }))
 }
 
@@ -58,7 +57,7 @@ pub(crate) fn get_num_chunks(ds: &Dataset) -> Option<usize> {
     }
     h5lock!(ds.space().map_or(None, |s| {
         let mut n: hsize_t = 0;
-        h5check(H5Dget_num_chunks(ds.id(), s.id(), &mut n)).map(|_| n as _).ok()
+        H5Dget_num_chunks(ds.id(), s.id(), &mut n).and_then(|ret| h5check(ret).map(|_| n as _).ok())
     }))
 }
 

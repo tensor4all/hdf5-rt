@@ -41,7 +41,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Ubuntu with system HDF5 1.10.x (minimum supported version)
+          # Ubuntu with conda HDF5 1.10.4 (minimum supported version)
+          - os: ubuntu-22.04
+            hdf5: "1.10.4"
+            hdf5_source: "conda"
+          # Ubuntu with system HDF5 1.10.x (apt, typically 1.10.7)
           - os: ubuntu-22.04
             hdf5: "1.10"
             hdf5_source: "apt"

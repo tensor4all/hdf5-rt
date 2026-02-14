@@ -912,13 +912,13 @@ pub fn init(path: Option<&str>) -> Result<(), String> {
         H5open();
     }
 
-    // Check HDF5 version (require 1.10.5 or later)
+    // Check HDF5 version (require 1.10.4 or later)
     check_hdf5_version()?;
 
     Ok(())
 }
 
-/// Check that the HDF5 library version is at least 1.10.5 and store the version.
+/// Check that the HDF5 library version is at least 1.10.4 and store the version.
 /// Returns an error if the version is too old.
 fn check_hdf5_version() -> Result<(), String> {
     let mut major: c_uint = 0;
@@ -932,10 +932,10 @@ fn check_hdf5_version() -> Result<(), String> {
     let version = Version { major: major as u8, minor: minor as u8, micro: release as u8 };
     let _ = HDF5_RUNTIME_VERSION.set(version);
 
-    // Check minimum version: 1.10.5
-    if major < 1 || (major == 1 && minor < 10) || (major == 1 && minor == 10 && release < 5) {
+    // Check minimum version: 1.10.4
+    if major < 1 || (major == 1 && minor < 10) || (major == 1 && minor == 10 && release < 4) {
         return Err(format!(
-            "HDF5 {}.{}.{} is not supported. Minimum required version is 1.10.5",
+            "HDF5 {}.{}.{} is not supported. Minimum required version is 1.10.4",
             major, minor, release
         ));
     }
@@ -1128,22 +1128,46 @@ hdf5_function!(
 hdf5_function!(H5Dset_extent, fn(dset_id: hid_t, size: *const hsize_t) -> herr_t);
 hdf5_function!(H5Dflush, fn(dset_id: hid_t) -> herr_t);
 hdf5_function!(H5Drefresh, fn(dset_id: hid_t) -> herr_t);
-hdf5_function!(
-    H5Dget_num_chunks,
-    fn(dset_id: hid_t, fspace_id: hid_t, nchunks: *mut hsize_t) -> herr_t
-);
-hdf5_function!(
-    H5Dget_chunk_info,
-    fn(
-        dset_id: hid_t,
-        fspace_id: hid_t,
-        chk_idx: hsize_t,
-        offset: *mut hsize_t,
-        filter_mask: *mut c_uint,
-        addr: *mut haddr_t,
-        size: *mut hsize_t,
-    ) -> herr_t
-);
+/// H5Dget_num_chunks - Available in HDF5 1.10.5+
+/// Returns None if the function is not available (HDF5 < 1.10.5)
+pub unsafe fn H5Dget_num_chunks(
+    dset_id: hid_t,
+    fspace_id: hid_t,
+    nchunks: *mut hsize_t,
+) -> Option<herr_t> {
+    let lib = get_library();
+    let func: Option<Symbol<unsafe extern "C" fn(hid_t, hid_t, *mut hsize_t) -> herr_t>> =
+        lib.get(b"H5Dget_num_chunks").ok();
+    func.map(|f| f(dset_id, fspace_id, nchunks))
+}
+
+/// H5Dget_chunk_info - Available in HDF5 1.10.5+
+/// Returns None if the function is not available (HDF5 < 1.10.5)
+pub unsafe fn H5Dget_chunk_info(
+    dset_id: hid_t,
+    fspace_id: hid_t,
+    chk_idx: hsize_t,
+    offset: *mut hsize_t,
+    filter_mask: *mut c_uint,
+    addr: *mut haddr_t,
+    size: *mut hsize_t,
+) -> Option<herr_t> {
+    let lib = get_library();
+    let func: Option<
+        Symbol<
+            unsafe extern "C" fn(
+                hid_t,
+                hid_t,
+                hsize_t,
+                *mut hsize_t,
+                *mut c_uint,
+                *mut haddr_t,
+                *mut hsize_t,
+            ) -> herr_t,
+        >,
+    > = lib.get(b"H5Dget_chunk_info").ok();
+    func.map(|f| f(dset_id, fspace_id, chk_idx, offset, filter_mask, addr, size))
+}
 hdf5_function!(
     H5Dcreate_anon,
     fn(loc_id: hid_t, type_id: hid_t, space_id: hid_t, dcpl_id: hid_t, dapl_id: hid_t) -> hid_t
@@ -2294,10 +2318,10 @@ mod tests {
         // Version should be accessible after init
         let version = hdf5_version().expect("Version should be stored after init");
 
-        // Version should be at least 1.10.5 (our minimum)
+        // Version should be at least 1.10.4 (our minimum)
         assert!(
-            hdf5_version_at_least(1, 10, 5),
-            "Version {}.{}.{} should be at least 1.10.5",
+            hdf5_version_at_least(1, 10, 4),
+            "Version {}.{}.{} should be at least 1.10.4",
             version.major,
             version.minor,
             version.micro
