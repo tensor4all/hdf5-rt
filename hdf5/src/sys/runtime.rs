@@ -918,7 +918,7 @@ pub fn init(path: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
-/// Check that the HDF5 library version is at least 1.10.5 and store the version.
+/// Check that the HDF5 library version is at least 1.10.4 and store the version.
 /// Returns an error if the version is too old.
 fn check_hdf5_version() -> Result<(), String> {
     let mut major: c_uint = 0;
@@ -932,10 +932,10 @@ fn check_hdf5_version() -> Result<(), String> {
     let version = Version { major: major as u8, minor: minor as u8, micro: release as u8 };
     let _ = HDF5_RUNTIME_VERSION.set(version);
 
-    // Check minimum version: 1.10.5
-    if major < 1 || (major == 1 && minor < 10) || (major == 1 && minor == 10 && release < 5) {
+    // Check minimum version: 1.10.4
+    if major < 1 || (major == 1 && minor < 10) || (major == 1 && minor == 10 && release < 4) {
         return Err(format!(
-            "HDF5 {}.{}.{} is not supported. Minimum required version is 1.10.5",
+            "HDF5 {}.{}.{} is not supported. Minimum required version is 1.10.4",
             major, minor, release
         ));
     }
