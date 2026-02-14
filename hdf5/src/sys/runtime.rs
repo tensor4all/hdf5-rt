@@ -844,33 +844,58 @@ fn get_library() -> &'static Library {
     *LIBRARY.get().expect("HDF5 library not initialized. Call hdf5::sys::init() first.")
 }
 
+/// Returns the list of default library names to try when loading HDF5.
+fn default_library_candidates() -> Vec<&'static str> {
+    #[cfg(target_os = "macos")]
+    {
+        vec!["/opt/homebrew/lib/libhdf5.dylib", "/usr/local/lib/libhdf5.dylib", "libhdf5.dylib"]
+    }
+    #[cfg(target_os = "linux")]
+    {
+        vec!["libhdf5.so", "libhdf5_serial.so"]
+    }
+    #[cfg(target_os = "windows")]
+    {
+        vec!["hdf5.dll"]
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        vec!["libhdf5.so"]
+    }
+}
+
 /// Initialize the HDF5 library by loading it from the specified path.
 pub fn init(path: Option<&str>) -> Result<(), String> {
     if LIBRARY.get().is_some() {
         return Ok(());
     }
 
-    let lib_path = path.map(|s| s.to_string()).unwrap_or_else(|| {
-        #[cfg(target_os = "macos")]
-        {
-            "/opt/homebrew/lib/libhdf5.dylib".to_string()
+    let (library, resolved_path) = if let Some(p) = path {
+        let lib = unsafe { Library::new(p) }
+            .map_err(|e| format!("Failed to load HDF5 library from {}: {}", p, e))?;
+        (lib, p.to_string())
+    } else {
+        let candidates = default_library_candidates();
+        let mut last_err = String::new();
+        let mut loaded = None;
+        for name in &candidates {
+            match unsafe { Library::new(*name) } {
+                Ok(lib) => {
+                    loaded = Some((lib, name.to_string()));
+                    break;
+                }
+                Err(e) => {
+                    last_err = format!("{}", e);
+                }
+            }
         }
-        #[cfg(target_os = "linux")]
-        {
-            "libhdf5.so".to_string()
-        }
-        #[cfg(target_os = "windows")]
-        {
-            "hdf5.dll".to_string()
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-        {
-            "libhdf5.so".to_string()
-        }
-    });
-
-    let library = unsafe { Library::new(&lib_path) }
-        .map_err(|e| format!("Failed to load HDF5 library from {}: {}", lib_path, e))?;
+        loaded.ok_or_else(|| {
+            format!(
+                "Failed to load HDF5 library. Tried: {:?}. Last error: {}",
+                candidates, last_err
+            )
+        })?
+    };
 
     // Leak the library handle to prevent dlclose() on exit.
     // HDF5 has problematic cleanup routines that can cause "infinite loop closing library"
@@ -880,7 +905,7 @@ pub fn init(path: Option<&str>) -> Result<(), String> {
     let library = Box::leak(Box::new(library));
 
     LIBRARY.set(library).map_err(|_| "Library already initialized".to_string())?;
-    LIBRARY_PATH.set(lib_path).map_err(|_| "Library path already set".to_string())?;
+    LIBRARY_PATH.set(resolved_path).map_err(|_| "Library path already set".to_string())?;
 
     // Initialize HDF5
     unsafe {
