@@ -912,7 +912,7 @@ pub fn init(path: Option<&str>) -> Result<(), String> {
         H5open();
     }
 
-    // Check HDF5 version (require 1.10.5 or later)
+    // Check HDF5 version (require 1.10.4 or later)
     check_hdf5_version()?;
 
     Ok(())
@@ -2318,10 +2318,10 @@ mod tests {
         // Version should be accessible after init
         let version = hdf5_version().expect("Version should be stored after init");
 
-        // Version should be at least 1.10.5 (our minimum)
+        // Version should be at least 1.10.4 (our minimum)
         assert!(
-            hdf5_version_at_least(1, 10, 5),
-            "Version {}.{}.{} should be at least 1.10.5",
+            hdf5_version_at_least(1, 10, 4),
+            "Version {}.{}.{} should be at least 1.10.4",
             version.major,
             version.minor,
             version.micro

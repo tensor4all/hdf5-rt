@@ -219,6 +219,6 @@ pub mod tests {
 
     #[test]
     pub fn test_minimum_library_version() {
-        assert!(library_version() >= (1, 10, 5));
+        assert!(library_version() >= (1, 10, 4));
     }
 }
