@@ -15,7 +15,7 @@ Forked from [hdf5-metno](https://github.com/metno/hdf5-rust).
 ## Features
 
 - **Runtime loading** - No compile-time HDF5 dependency
-- **HDF5 1.10.5+ support** - Compatible with Ubuntu 22.04, HDF5.jl, h5py
+- **HDF5 1.10.4+ support** - Compatible with Ubuntu 20.04+, HDF5.jl, h5py
 - **Thread-safe** - Safe concurrent access to HDF5
 
 Optional features:
@@ -44,7 +44,7 @@ fn main() -> hdf5_rt::Result<()> {
 
 ## Requirements
 
-- **HDF5 1.10.5 or later** installed on your system
+- **HDF5 1.10.4 or later** installed on your system
 - Rust 1.80.0+
 
 ```bash
