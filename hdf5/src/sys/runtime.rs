@@ -1128,22 +1128,46 @@ hdf5_function!(
 hdf5_function!(H5Dset_extent, fn(dset_id: hid_t, size: *const hsize_t) -> herr_t);
 hdf5_function!(H5Dflush, fn(dset_id: hid_t) -> herr_t);
 hdf5_function!(H5Drefresh, fn(dset_id: hid_t) -> herr_t);
-hdf5_function!(
-    H5Dget_num_chunks,
-    fn(dset_id: hid_t, fspace_id: hid_t, nchunks: *mut hsize_t) -> herr_t
-);
-hdf5_function!(
-    H5Dget_chunk_info,
-    fn(
-        dset_id: hid_t,
-        fspace_id: hid_t,
-        chk_idx: hsize_t,
-        offset: *mut hsize_t,
-        filter_mask: *mut c_uint,
-        addr: *mut haddr_t,
-        size: *mut hsize_t,
-    ) -> herr_t
-);
+/// H5Dget_num_chunks - Available in HDF5 1.10.5+
+/// Returns None if the function is not available (HDF5 < 1.10.5)
+pub unsafe fn H5Dget_num_chunks(
+    dset_id: hid_t,
+    fspace_id: hid_t,
+    nchunks: *mut hsize_t,
+) -> Option<herr_t> {
+    let lib = get_library();
+    let func: Option<Symbol<unsafe extern "C" fn(hid_t, hid_t, *mut hsize_t) -> herr_t>> =
+        lib.get(b"H5Dget_num_chunks").ok();
+    func.map(|f| f(dset_id, fspace_id, nchunks))
+}
+
+/// H5Dget_chunk_info - Available in HDF5 1.10.5+
+/// Returns None if the function is not available (HDF5 < 1.10.5)
+pub unsafe fn H5Dget_chunk_info(
+    dset_id: hid_t,
+    fspace_id: hid_t,
+    chk_idx: hsize_t,
+    offset: *mut hsize_t,
+    filter_mask: *mut c_uint,
+    addr: *mut haddr_t,
+    size: *mut hsize_t,
+) -> Option<herr_t> {
+    let lib = get_library();
+    let func: Option<
+        Symbol<
+            unsafe extern "C" fn(
+                hid_t,
+                hid_t,
+                hsize_t,
+                *mut hsize_t,
+                *mut c_uint,
+                *mut haddr_t,
+                *mut hsize_t,
+            ) -> herr_t,
+        >,
+    > = lib.get(b"H5Dget_chunk_info").ok();
+    func.map(|f| f(dset_id, fspace_id, chk_idx, offset, filter_mask, addr, size))
+}
 hdf5_function!(
     H5Dcreate_anon,
     fn(loc_id: hid_t, type_id: hid_t, space_id: hid_t, dcpl_id: hid_t, dapl_id: hid_t) -> hid_t
