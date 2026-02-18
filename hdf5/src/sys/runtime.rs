@@ -844,15 +844,42 @@ fn get_library() -> &'static Library {
     *LIBRARY.get().expect("HDF5 library not initialized. Call hdf5::sys::init() first.")
 }
 
-/// Returns the list of default library names to try when loading HDF5.
+/// Returns the list of default library names/paths to try when loading HDF5.
+///
+/// The loader tries each candidate in order and stops at the first successful load.
+/// Bare names (e.g. `"libhdf5.so"`) rely on the dynamic linker search path
+/// (`LD_LIBRARY_PATH`, `/etc/ld.so.conf`, etc.), while absolute paths are tried directly.
 fn default_library_candidates() -> Vec<&'static str> {
     #[cfg(target_os = "macos")]
     {
-        vec!["/opt/homebrew/lib/libhdf5.dylib", "/usr/local/lib/libhdf5.dylib", "libhdf5.dylib"]
+        vec![
+            // Homebrew Apple Silicon (arm64)
+            "/opt/homebrew/lib/libhdf5.dylib",
+            "/opt/homebrew/opt/hdf5/lib/libhdf5.dylib",
+            // Homebrew Intel (x86_64)
+            "/usr/local/lib/libhdf5.dylib",
+            "/usr/local/opt/hdf5/lib/libhdf5.dylib",
+            // Bare name (system linker search)
+            "libhdf5.dylib",
+        ]
     }
     #[cfg(target_os = "linux")]
     {
-        vec!["libhdf5.so", "libhdf5_serial.so"]
+        vec![
+            // Bare names first (respects LD_LIBRARY_PATH and ld.so.conf)
+            "libhdf5.so",
+            "libhdf5_serial.so",
+            // Debian/Ubuntu x86_64 serial
+            "/usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so",
+            // Debian/Ubuntu aarch64 serial
+            "/usr/lib/aarch64-linux-gnu/hdf5/serial/libhdf5.so",
+            // Fedora/RHEL/CentOS/openSUSE (x86_64 and aarch64 share /usr/lib64/)
+            "/usr/lib64/libhdf5.so",
+            // Arch Linux, Alpine, generic
+            "/usr/lib/libhdf5.so",
+            // Manual /usr/local installs
+            "/usr/local/lib/libhdf5.so",
+        ]
     }
     #[cfg(target_os = "windows")]
     {
