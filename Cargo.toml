@@ -32,7 +32,7 @@ hdf5-types = { path = "hdf5-types", package = "hdf5-rt-types" }
 [profile.dev]
 # Fast compile, reasonable runtime
 opt-level = 0          # no optimizations = much faster compilation
-debug = 1              # keep minimal debug info (0 is smaller, 1 is a nice compromise)
+debug = 0              # DWARF only enlarges target and build-cache output; CARGO_PROFILE_DEV_DEBUG=1 restores it
 incremental = true     # reuse previous compilation work
 codegen-units = 16     # more parallel codegen units = faster compiles
 lto = "off"            # no link-time optimization
@@ -43,5 +43,5 @@ overflow-checks = true # keep checks for safety in dev
 # Inherit dev as a baseline, then tweak for tests
 inherits = "dev"
 opt-level = 0          # keep tests compiling fast
-debug = 1              # enough info for backtraces
+debug = 0              # DWARF only enlarges target and build-cache output; CARGO_PROFILE_TEST_DEBUG=1 restores it
 overflow-checks = true
