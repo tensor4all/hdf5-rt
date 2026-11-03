@@ -38,7 +38,9 @@ cargo test --test test_name   # Specific test
 cargo test --workspace        # All crates
 ```
 
-- Private functions: `#[cfg(test)]` module in source file
+- Private functions: use module-local `src/<module>/tests/*.rs` files per the
+  shared [Unit Test Organization rule](https://github.com/tensor4all/tensor4all-agent-rules/blob/main/rules/rust/index.md#unit-test-organization);
+  no inline `#[cfg(test)]` module in the source file.
 - Integration tests: `tests/` directory
 - **Test tolerance changes**: When relaxing test tolerances, always seek explicit user approval before making changes.
 
