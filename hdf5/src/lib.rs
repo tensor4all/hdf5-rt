@@ -214,11 +214,4 @@ pub fn is_library_threadsafe() -> bool {
 pub const HDF5_VERSION: crate::sys::Version = crate::sys::HDF5_VERSION;
 
 #[cfg(test)]
-pub mod tests {
-    use crate::library_version;
-
-    #[test]
-    pub fn test_minimum_library_version() {
-        assert!(library_version() >= (1, 10, 4));
-    }
-}
+pub mod tests;
