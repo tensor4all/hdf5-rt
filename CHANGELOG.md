@@ -15,7 +15,9 @@
 - Ported the new upstream sys surface to `hdf5/src/sys`: attribute create plists, committed
   datatypes, integer layouts, anonymous group creation, link phase change, integer pad/sign
   accessors, `H5Aget_create_plist`, version-aware `H5O` info/token calls, and the external
-  storage offset ABI (`HDoff_t`).
+  storage offset ABI (`HDoff_t`). `HDoff_t` follows the target pointer width because the
+  loader cannot read the linked library's `H5_SIZEOF_OFF_T`; 32-bit targets with a
+  large-file-enabled HDF5 are outside the tested matrix.
 - Runtime error classes follow the HDF5 renames (`H5E_ATOM` -> `H5E_ID`, `H5E_BADATOM` ->
   `H5E_BADID`) and the renamed logging code (`H5E_LOGFAIL` -> `H5E_LOGGING`), so the loader
   also resolves error codes on HDF5 2.x.

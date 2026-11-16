@@ -33,10 +33,15 @@ pub type hssize_t = c_long;
 pub type haddr_t = u64;
 /// HDF5 tri-state type
 pub type htri_t = c_int;
-/// Signed external-file offset matching the host platform's `off_t` ABI.
+/// Signed external-file offset for `H5Pset_external`/`H5Pget_external`.
 ///
-/// The runtime loader cannot inspect how HDF5 was built, so this follows the
-/// platform: `i64` on every 64-bit target we support, `i32` otherwise.
+/// Upstream derives this from the linked library's `H5_SIZEOF_OFF_T`, which the
+/// dlopen loader cannot inspect. It therefore follows the target pointer width:
+/// `i64` on 64-bit targets (where `off_t` is 8 bytes) and `i32` otherwise.
+/// This is an approximation: a 32-bit target whose HDF5 was built with large-file
+/// support (64-bit `off_t`), or HDF5 2.x on 32-bit Windows, is not representable
+/// and external-file offsets would be wrong. The crate is only tested on 64-bit
+/// targets; 32-bit plus large-file HDF5 needs a real `H5_SIZEOF_OFF_T` probe.
 #[cfg(target_pointer_width = "64")]
 pub type HDoff_t = i64;
 #[cfg(not(target_pointer_width = "64"))]
@@ -1862,13 +1867,13 @@ hdf5_function!(
         idx: c_uint,
         name_size: size_t,
         name: *mut c_char,
-        offset: *mut i64,
+        offset: *mut HDoff_t,
         size: *mut hsize_t,
     ) -> herr_t
 );
 hdf5_function!(
     H5Pset_external,
-    fn(plist_id: hid_t, name: *const c_char, offset: i64, size: hsize_t) -> herr_t
+    fn(plist_id: hid_t, name: *const c_char, offset: HDoff_t, size: hsize_t) -> herr_t
 );
 hdf5_function!(H5Pget_external_count, fn(plist_id: hid_t) -> c_int);
 hdf5_function!(H5Pget_gc_references, fn(fapl_id: hid_t, gc_ref: *mut c_uint) -> herr_t);
