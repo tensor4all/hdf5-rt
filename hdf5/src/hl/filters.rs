@@ -749,7 +749,7 @@ impl Filter {
             #[cfg(feature = "zfp")]
             Self::Zfp(mode, chunk_dims, n_bytes) =>
                 Self::apply_zfp(id, *n_bytes, chunk_dims.clone(), *mode),
-            Self::User(filter_id, ref cdata) => Self::apply_user(id, *filter_id, cdata),
+            Self::User(filter_id, cdata) => Self::apply_user(id, *filter_id, cdata),
         });
         Ok(())
     }

@@ -13,11 +13,12 @@ use crate::sys::h5o::{
 };
 use crate::sys::h5p::{
     H5Pcreate, H5Pget_attr_creation_order, H5Pget_attr_phase_change, H5Pget_istore_k,
-    H5Pget_obj_track_times, H5Pget_shared_mesg_index, H5Pget_shared_mesg_nindexes,
-    H5Pget_shared_mesg_phase_change, H5Pget_sizes, H5Pget_sym_k, H5Pget_userblock,
-    H5Pset_attr_creation_order, H5Pset_attr_phase_change, H5Pset_istore_k, H5Pset_obj_track_times,
-    H5Pset_shared_mesg_index, H5Pset_shared_mesg_nindexes, H5Pset_shared_mesg_phase_change,
-    H5Pset_sym_k, H5Pset_userblock,
+    H5Pget_link_creation_order, H5Pget_obj_track_times, H5Pget_shared_mesg_index,
+    H5Pget_shared_mesg_nindexes, H5Pget_shared_mesg_phase_change, H5Pget_sizes, H5Pget_sym_k,
+    H5Pget_userblock, H5Pset_attr_creation_order, H5Pset_attr_phase_change, H5Pset_istore_k,
+    H5Pset_link_creation_order, H5Pset_obj_track_times, H5Pset_shared_mesg_index,
+    H5Pset_shared_mesg_nindexes, H5Pset_shared_mesg_phase_change, H5Pset_sizes, H5Pset_sym_k,
+    H5Pset_userblock,
 };
 #[cfg(all(feature = "1.10.1", feature = "link"))]
 use crate::sys::h5p::{
@@ -26,7 +27,7 @@ use crate::sys::h5p::{
 };
 
 use crate::globals::H5P_FILE_CREATE;
-pub use crate::hl::plist::common::{AttrCreationOrder, AttrPhaseChange};
+pub use crate::hl::plist::common::{AttrCreationOrder, AttrPhaseChange, LinkCreationOrder};
 use crate::internal_prelude::*;
 
 /// File creation properties.
@@ -68,7 +69,8 @@ impl Debug for FileCreate {
         formatter.field("obj_track_times", &self.obj_track_times());
         formatter.field("attr_phase_change", &self.attr_phase_change());
         formatter.field("attr_creation_order", &self.attr_creation_order());
-        #[cfg(all(feature = "1.10.1", feature = "link"))]
+        formatter.field("link_creation_order", &self.link_creation_order());
+        #[cfg(feature = "1.10.1")]
         {
             formatter.field("file_space_page_size", &self.file_space_page_size());
             formatter.field("file_space_strategy", &self.file_space_strategy());
@@ -93,13 +95,54 @@ impl PartialEq for FileCreate {
 
 impl Eq for FileCreate {}
 
+/// Byte size of the offset and length fields of a file.
+///
+/// Every file address and every length stored in an HDF5 file is encoded at
+/// one of these sizes. The sizes are fixed when the file is created, see
+/// [`FileCreateBuilder::sizes`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Sizeof {
+    /// 2 bytes.
+    Bytes2 = 2,
+    /// 4 bytes.
+    Bytes4 = 4,
+    /// 8 bytes, the default.
+    #[default]
+    Bytes8 = 8,
+    /// 16 bytes.
+    Bytes16 = 16,
+}
+
+impl From<Sizeof> for usize {
+    fn from(sizeof: Sizeof) -> Self {
+        sizeof as Self
+    }
+}
+
+impl TryFrom<usize> for Sizeof {
+    type Error = Error;
+
+    fn try_from(bytes: usize) -> Result<Self> {
+        match bytes {
+            2 => Ok(Self::Bytes2),
+            4 => Ok(Self::Bytes4),
+            8 => Ok(Self::Bytes8),
+            16 => Ok(Self::Bytes16),
+            _ => Err(format!("invalid offset or length size: {bytes}").into()),
+        }
+    }
+}
+
 /// Size of the offsets and lengths used in a file.
+///
+/// The two sizes are independent: the offset size bounds the size of the
+/// file and the length size bounds the size of an object in it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SizeofInfo {
-    /// Offset size in bytes.
-    pub sizeof_addr: usize,
-    /// Length size in bytes.
-    pub sizeof_size: usize,
+    /// Size of every file address ("Size of Offsets").
+    pub sizeof_addr: Sizeof,
+    /// Size of every length field ("Size of Lengths").
+    pub sizeof_size: Sizeof,
 }
 
 /// Size of parameters used to control the symbol table nodes.
@@ -220,6 +263,7 @@ impl Default for FileSpaceStrategy {
 #[derive(Clone, Debug, Default)]
 pub struct FileCreateBuilder {
     userblock: Option<u64>,
+    sizes: Option<SizeofInfo>,
     sym_k: Option<SymbolTableInfo>,
     istore_k: Option<u32>,
     shared_mesg_phase_change: Option<PhaseChangeInfo>,
@@ -227,7 +271,8 @@ pub struct FileCreateBuilder {
     obj_track_times: Option<bool>,
     attr_phase_change: Option<AttrPhaseChange>,
     attr_creation_order: Option<AttrCreationOrder>,
-    #[cfg(all(feature = "1.10.1", feature = "link"))]
+    link_creation_order: Option<LinkCreationOrder>,
+    #[cfg(feature = "1.10.1")]
     file_space_page_size: Option<u64>,
     #[cfg(all(feature = "1.10.1", feature = "link"))]
     file_space_strategy: Option<FileSpaceStrategy>,
@@ -243,6 +288,7 @@ impl FileCreateBuilder {
     pub fn from_plist(plist: &FileCreate) -> Result<Self> {
         let mut builder = Self::default();
         builder.userblock(plist.get_userblock()?);
+        builder.sizes(plist.get_sizes()?);
         let v = plist.get_sym_k()?;
         builder.sym_k(v.tree_rank, v.node_size);
         builder.istore_k(plist.get_istore_k()?);
@@ -253,7 +299,8 @@ impl FileCreateBuilder {
         let apc = plist.get_attr_phase_change()?;
         builder.attr_phase_change(apc.max_compact, apc.min_dense);
         builder.attr_creation_order(plist.get_attr_creation_order()?);
-        #[cfg(all(feature = "1.10.1", feature = "link"))]
+        builder.link_creation_order(plist.get_link_creation_order()?);
+        #[cfg(feature = "1.10.1")]
         {
             builder.file_space_page_size(plist.get_file_space_page_size()?);
             builder.file_space_strategy(plist.get_file_space_strategy()?);
@@ -268,6 +315,31 @@ impl FileCreateBuilder {
     /// greater (512, 1024, 2048, etc.).
     pub fn userblock(&mut self, size: u64) -> &mut Self {
         self.userblock = Some(size);
+        self
+    }
+
+    /// Sets the byte size of the offset and length fields of the file.
+    ///
+    /// Every file address is stored at `sizeof_addr` bytes and every length
+    /// at `sizeof_size` bytes. Both default to [`Sizeof::Bytes8`]. A smaller
+    /// size makes every metadata structure smaller and limits the size of the
+    /// file, or of an object in it, to what the field can address.
+    ///
+    /// This setting cannot be changed for the life of the file.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hdf5_rt::plist::FileCreateBuilder;
+    /// use hdf5_rt::plist::file_create::{Sizeof, SizeofInfo};
+    ///
+    /// let sizes = SizeofInfo { sizeof_addr: Sizeof::Bytes4, sizeof_size: Sizeof::Bytes8 };
+    /// let fcpl = FileCreateBuilder::new().sizes(sizes).finish()?;
+    /// assert_eq!(fcpl.sizes(), sizes);
+    /// # Ok::<(), hdf5_rt::Error>(())
+    /// ```
+    pub fn sizes(&mut self, sizes: SizeofInfo) -> &mut Self {
+        self.sizes = Some(sizes);
         self
     }
 
@@ -333,15 +405,23 @@ impl FileCreateBuilder {
         self
     }
 
-    /// Sets flags for tracking and indexing attribute creation order.
+    /// Sets whether attribute creation order is tracked and indexed.
     ///
-    /// For further details, see [`AttrCreationOrder`](struct.AttrCreationOrder.html).
+    /// See [`AttrCreationOrder`] for the available settings.
     pub fn attr_creation_order(&mut self, attr_creation_order: AttrCreationOrder) -> &mut Self {
         self.attr_creation_order = Some(attr_creation_order);
         self
     }
 
-    #[cfg(all(feature = "1.10.1", feature = "link"))]
+    /// Sets whether link creation order is tracked and indexed in the root group.
+    ///
+    /// See [`LinkCreationOrder`] for the available settings.
+    pub fn link_creation_order(&mut self, link_creation_order: LinkCreationOrder) -> &mut Self {
+        self.link_creation_order = Some(link_creation_order);
+        self
+    }
+
+    #[cfg(feature = "1.10.1")]
     /// Sets the file space page size.
     ///
     /// The minimum size is 512. Setting a value less than 512 will result in
@@ -366,6 +446,13 @@ impl FileCreateBuilder {
     fn populate_plist(&self, id: hid_t) -> Result<()> {
         if let Some(v) = self.userblock {
             h5try!(H5Pset_userblock(id, v as _));
+        }
+        if let Some(v) = self.sizes {
+            h5try!(H5Pset_sizes(
+                id,
+                usize::from(v.sizeof_addr) as _,
+                usize::from(v.sizeof_size) as _
+            ));
         }
         if let Some(v) = self.sym_k {
             h5try!(H5Pset_sym_k(id, v.tree_rank as _, v.node_size as _));
@@ -394,7 +481,10 @@ impl FileCreateBuilder {
             h5try!(H5Pset_attr_phase_change(id, v.max_compact as _, v.min_dense as _));
         }
         if let Some(v) = self.attr_creation_order {
-            h5try!(H5Pset_attr_creation_order(id, v.bits() as _));
+            h5try!(H5Pset_attr_creation_order(id, v.into()));
+        }
+        if let Some(v) = self.link_creation_order {
+            h5try!(H5Pset_link_creation_order(id, v.into()));
         }
         #[cfg(all(feature = "1.10.1", feature = "link"))]
         {
@@ -462,8 +552,10 @@ impl FileCreate {
 
     #[doc(hidden)]
     pub fn get_sizes(&self) -> Result<SizeofInfo> {
-        h5get!(H5Pget_sizes(self.id()): size_t, size_t).map(|(sizeof_addr, sizeof_size)| {
-            SizeofInfo { sizeof_addr: sizeof_addr as _, sizeof_size: sizeof_size as _ }
+        let (sizeof_addr, sizeof_size) = h5get!(H5Pget_sizes(self.id()): size_t, size_t)?;
+        Ok(SizeofInfo {
+            sizeof_addr: Sizeof::try_from(sizeof_addr as usize)?,
+            sizeof_size: Sizeof::try_from(sizeof_size as usize)?,
         })
     }
 
@@ -542,7 +634,7 @@ impl FileCreate {
 
     /// Retrieves the size of the offsets and lengths used in the file.
     pub fn sizes(&self) -> SizeofInfo {
-        self.get_sizes().unwrap_or_else(|_| SizeofInfo::default())
+        self.get_sizes().unwrap_or_default()
     }
 
     /// Retrieves the size of the symbol table B-tree 1/2 rank and the symbol
@@ -589,13 +681,26 @@ impl FileCreate {
 
     #[doc(hidden)]
     pub fn get_attr_creation_order(&self) -> Result<AttrCreationOrder> {
-        h5get!(H5Pget_attr_creation_order(self.id()): c_uint)
-            .map(AttrCreationOrder::from_bits_truncate)
+        h5get!(H5Pget_attr_creation_order(self.id()): c_uint).map(AttrCreationOrder::from_flags)
     }
 
-    /// Returns flags for tracking and indexing attribute creation order.
+    /// Returns whether attribute creation order is tracked and indexed.
+    ///
+    /// Returns [`AttrCreationOrder::Untracked`] if the property cannot be read.
     pub fn attr_creation_order(&self) -> AttrCreationOrder {
         self.get_attr_creation_order().unwrap_or_default()
+    }
+
+    #[doc(hidden)]
+    pub fn get_link_creation_order(&self) -> Result<LinkCreationOrder> {
+        h5get!(H5Pget_link_creation_order(self.id()): c_uint).map(LinkCreationOrder::from_flags)
+    }
+
+    /// Returns whether link creation order is tracked and indexed in the root group.
+    ///
+    /// Returns [`LinkCreationOrder::Untracked`] if the property cannot be read.
+    pub fn link_creation_order(&self) -> LinkCreationOrder {
+        self.get_link_creation_order().unwrap_or_default()
     }
 
     /// Retrieves the file space page size.

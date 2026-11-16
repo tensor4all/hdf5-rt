@@ -12,7 +12,7 @@ use crate::sys::h5o::{
     H5O_INFO_TIME,
 };
 use crate::sys::{
-    h5a::{H5Adelete, H5Aopen},
+    h5a::{H5A_info_t, H5Adelete, H5Aget_info_by_name, H5Aiterate2, H5Aopen, H5Aopen_by_idx},
     h5f::H5Fget_name,
     h5i::{H5Iget_file_id, H5Iget_name},
     h5o::{H5O_type_t, H5Oget_comment},
@@ -21,7 +21,8 @@ use crate::sys::{haddr_t, hdf5_version_at_least};
 
 use crate::internal_prelude::*;
 
-use super::attribute::AttributeBuilderEmpty;
+use super::attribute::{AttrInfo, AttributeBuilderEmpty};
+use super::iteration::visit;
 
 /// Named location (file, group, dataset, named datatype).
 #[repr(transparent)]
@@ -119,13 +120,234 @@ impl Location {
         Attribute::from_id(h5try!(H5Aopen(self.id(), name.as_ptr(), H5P_DEFAULT)))
     }
 
-    /// Return the names of all attributes on the object.
+    /// Opens the attribute at `index` along `index_type` in `iteration_order`.
     ///
     /// # Errors
     ///
-    /// Returns an error if an underlying library call fails.
+    /// Fails if `index` is not below the number of attributes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hdf5_rt::{File, IndexType, IterationOrder};
+    ///
+    /// let file = File::with_options().with_fapl(|p| p.core_filebacked(false)).create("attr_by_index.h5")?;
+    /// file.new_attr::<u32>().create("b")?;
+    /// file.new_attr::<u32>().create("a")?;
+    ///
+    /// let last = file.attr_by_index(IndexType::Name, IterationOrder::Decreasing, 0)?;
+    /// assert_eq!(last.name(), "b");
+    /// # Ok::<(), hdf5_rt::Error>(())
+    /// ```
+    pub fn attr_by_index(
+        &self,
+        index_type: IndexType,
+        iteration_order: IterationOrder,
+        index: u64,
+    ) -> Result<Attribute> {
+        Attribute::from_id(h5try!(H5Aopen_by_idx(
+            self.id(),
+            b".\0".as_ptr().cast::<c_char>(),
+            index_type.into(),
+            iteration_order.into(),
+            index,
+            H5P_DEFAULT,
+            H5P_DEFAULT
+        )))
+    }
+
+    /// Returns information about the attribute called `name`.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the object has no attribute called `name`.
+    pub fn attr_info(&self, name: &str) -> Result<AttrInfo> {
+        let name = to_cstring(name)?;
+        let mut info = MaybeUninit::<H5A_info_t>::uninit();
+        h5call!(H5Aget_info_by_name(
+            self.id(),
+            b".\0".as_ptr().cast::<c_char>(),
+            name.as_ptr(),
+            info.as_mut_ptr(),
+            H5P_DEFAULT
+        ))?;
+        // SAFETY: H5Aget_info_by_name fills the info on success, and the error was checked
+        let info = unsafe { info.assume_init() };
+        Ok(AttrInfo::from(&info))
+    }
+
+    /// Returns the names of all attributes of the object, in increasing name order.
     pub fn attr_names(&self) -> Result<Vec<String>> {
-        Attribute::attr_names(self)
+        self.attr_names_by(IndexType::Name, IterationOrder::Increasing)
+    }
+
+    /// Returns the names of all attributes of the object along `index_type` in
+    /// `iteration_order`.
+    pub fn attr_names_by(
+        &self,
+        index_type: IndexType,
+        iteration_order: IterationOrder,
+    ) -> Result<Vec<String>> {
+        let mut names = vec![];
+        self.iter_attrs(index_type, iteration_order, |name, _| {
+            names.push(name.to_owned());
+            Ok(())
+        })?;
+        Ok(names)
+    }
+
+    /// Returns the name and [`AttrInfo`] of all attributes of the object along `index_type`
+    /// in `iteration_order`.
+    pub fn attrs(
+        &self,
+        index_type: IndexType,
+        iteration_order: IterationOrder,
+    ) -> Result<Vec<(String, AttrInfo)>> {
+        let mut attrs = vec![];
+        self.iter_attrs(index_type, iteration_order, |name, info| {
+            attrs.push((name.to_owned(), info));
+            Ok(())
+        })?;
+        Ok(attrs)
+    }
+
+    /// Visits every attribute of the object.
+    ///
+    /// The attributes are traversed along `index_type` in `iteration_order`, and `op`
+    /// is called with the name and the [`AttrInfo`] of each attribute. Use
+    /// [`find_attr`](Self::find_attr) to stop early.
+    ///
+    /// An object that does not track attribute creation order is still traversed by
+    /// [`IndexType::CreationOrder`]. Attributes stored compactly in the object header
+    /// come in storage sequence with a position each. Attributes stored densely come
+    /// from the name index in native order with no positions. Track the order with
+    /// [`AttrCreationOrder`](crate::plist::group_create::AttrCreationOrder) for a
+    /// reliable result.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first error returned by `op`, or the HDF5 error if the iteration
+    /// itself fails.
+    ///
+    /// # Panics
+    ///
+    /// A panic in `op` is caught while HDF5 frames are on the stack and resumed once
+    /// the iteration has returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hdf5_rt::plist::group_create::AttrCreationOrder;
+    /// use hdf5_rt::{File, IndexType, IterationOrder};
+    ///
+    /// let file = File::with_options().with_fapl(|p| p.core_filebacked(false)).create("iter_attrs.h5")?;
+    /// let group = file
+    ///     .create_group_builder()
+    ///     .with_gcpl(|gcpl| gcpl.attr_creation_order(AttrCreationOrder::Tracked))
+    ///     .create("g")?;
+    /// group.new_attr::<u32>().create("b")?;
+    /// group.new_attr::<u32>().create("a")?;
+    ///
+    /// let mut names = vec![];
+    /// group.iter_attrs(IndexType::CreationOrder, IterationOrder::Increasing, |name, _| {
+    ///     names.push(name.to_owned());
+    ///     Ok(())
+    /// })?;
+    /// assert_eq!(names, ["b", "a"]);
+    /// assert_eq!(group.attr_names()?, ["a", "b"]);
+    /// # Ok::<(), hdf5_rt::Error>(())
+    /// ```
+    pub fn iter_attrs<F>(
+        &self,
+        index_type: IndexType,
+        iteration_order: IterationOrder,
+        mut op: F,
+    ) -> Result<()>
+    where
+        F: FnMut(&str, AttrInfo) -> Result<()>,
+    {
+        self.iter_attrs_from(IterationCursor::start(index_type, iteration_order), |name, info| {
+            op(name, info)?;
+            Ok(None::<()>)
+        })?;
+        Ok(())
+    }
+
+    /// Visits the attributes of the object until `op` returns a value.
+    ///
+    /// The attributes are traversed along `index_type` in `iteration_order`, and `op`
+    /// is called with the name and the [`AttrInfo`] of each attribute until it returns
+    /// `Some`. That value is returned, or `None` once every attribute was visited.
+    ///
+    /// # Errors
+    ///
+    /// As for [`iter_attrs`](Self::iter_attrs).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hdf5_rt::{File, IndexType, IterationOrder};
+    ///
+    /// let file = File::with_options().with_fapl(|p| p.core_filebacked(false)).create("find_attr.h5")?;
+    /// file.new_attr::<u8>().create("small")?;
+    /// file.new_attr::<u64>().create("large")?;
+    ///
+    /// let wide = file.find_attr(IndexType::Name, IterationOrder::Increasing, |name, info| {
+    ///     if info.data_size > 4 { Ok(Some(name.to_owned())) } else { Ok(None) }
+    /// })?;
+    /// assert_eq!(wide, Some("large".to_owned()));
+    /// # Ok::<(), hdf5_rt::Error>(())
+    /// ```
+    pub fn find_attr<B, F>(
+        &self,
+        index_type: IndexType,
+        iteration_order: IterationOrder,
+        op: F,
+    ) -> Result<Option<B>>
+    where
+        F: FnMut(&str, AttrInfo) -> Result<Option<B>>,
+    {
+        match self.iter_attrs_from(IterationCursor::start(index_type, iteration_order), op)? {
+            Some((value, _)) => Ok(Some(value)),
+            None => Ok(None),
+        }
+    }
+
+    /// Visits the attributes of the object from `cursor` onwards until `op` returns a
+    /// value.
+    ///
+    /// Behaves like [`find_attr`](Self::find_attr). The value is returned together
+    /// with the cursor of the next attribute, so the iteration can be resumed by
+    /// passing that cursor back. Returns `None` once every attribute was visited,
+    /// including when `cursor` is already at or past the last attribute. See
+    /// [`Group::iter_visit_from`](crate::Group::iter_visit_from) for a paging loop.
+    ///
+    /// # Errors
+    ///
+    /// As for [`iter_attrs`](Self::iter_attrs).
+    pub fn iter_attrs_from<B, F>(
+        &self,
+        cursor: IterationCursor,
+        op: F,
+    ) -> Result<Option<(B, IterationCursor)>>
+    where
+        F: FnMut(&str, AttrInfo) -> Result<Option<B>>,
+    {
+        visit(
+            cursor,
+            || Ok(self.loc_info()?.num_attrs as u64),
+            op,
+            |index_type, iteration_order, position, callback, op_data| unsafe {
+                H5Aiterate2(
+                    self.id(),
+                    index_type,
+                    iteration_order,
+                    position,
+                    Some(callback),
+                    op_data,
+                )
+            },
+        )
     }
 
     pub fn delete_attr(&self, name: &str) -> Result<()> {
@@ -341,25 +563,19 @@ fn info_fields(full: bool) -> c_uint {
     }
 }
 
-#[allow(non_snake_case)]
-fn H5O_get_info(loc_id: hid_t, full: bool) -> Result<LocationInfo> {
+#[allow(non_snake_case, unused_variables)]
+pub(crate) fn H5O_get_info(loc_id: hid_t, full: bool) -> Result<LocationInfo> {
     if hdf5_version_at_least(1, 12, 0) {
-        // HDF5 >= 1.12: Use H5Oget_info3 with H5O_info2_t
         let mut info_buf: MaybeUninit<H5O_info2_t> = MaybeUninit::uninit();
-        let info_ptr = info_buf.as_mut_ptr();
-        h5call!(H5Oget_info3(loc_id, info_ptr, info_fields(full)))?;
-        let info = unsafe { info_buf.assume_init() };
-        Ok(LocationInfo::from_info2(info))
+        h5call!(H5Oget_info3(loc_id, info_buf.as_mut_ptr(), info_fields(full)))?;
+        Ok(LocationInfo::from_info2(unsafe { info_buf.assume_init() }))
     } else {
-        // HDF5 < 1.12: Use H5Oget_info1 with H5O_info1_t
-        // Note: H5Oget_info1 does NOT have a fields parameter (only 2 params)
+        // HDF5 < 1.12: H5Oget_info1 has no fields parameter and returns a legacy layout.
         let mut info_buf: MaybeUninit<H5O_info1_t> = MaybeUninit::uninit();
-        let info_ptr = info_buf.as_mut_ptr();
-        let result = unsafe { H5Oget_info1(loc_id, info_ptr) };
+        let result = unsafe { H5Oget_info1(loc_id, info_buf.as_mut_ptr()) };
         match result {
             Some(ret) if ret >= 0 => {
-                let info = unsafe { info_buf.assume_init() };
-                Ok(LocationInfo::from_info1(info))
+                Ok(LocationInfo::from_info1(unsafe { info_buf.assume_init() }))
             }
             Some(_) => Err(Error::query()?),
             None => fail!("H5Oget_info1 not available"),

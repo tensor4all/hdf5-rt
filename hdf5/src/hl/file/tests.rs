@@ -25,7 +25,9 @@ pub fn test_unable_to_open() {
         assert_err_re!(File::open_rw(&dir), "unable to (?:synchronously )?open file");
         assert_err_re!(File::create_excl(&dir), "unable to (?:synchronously )?create file");
         assert_err_re!(File::create(&dir), "unable to (?:synchronously )?create file");
-        assert_err_re!(File::append(&dir), "unable to (?:synchronously )?create file");
+        // `append` first tries read-write, and reports that error when the path exists, so a
+        // directory surfaces as an open failure rather than a create failure.
+        assert_err_re!(File::append(&dir), "unable to (?:synchronously )?open file");
     });
     with_tmp_path(|path| {
         fs::File::create(&path).unwrap().write_all(b"foo").unwrap();

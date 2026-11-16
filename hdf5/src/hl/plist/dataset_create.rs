@@ -7,6 +7,7 @@ use std::ptr::{self, addr_of_mut};
 #[cfg(all(feature = "1.10.0", feature = "link"))]
 use bitflags::bitflags;
 
+use crate::sys::h5::HDoff_t;
 use crate::sys::h5d::{H5D_alloc_time_t, H5D_fill_time_t, H5D_fill_value_t, H5D_layout_t};
 use crate::sys::h5f::H5F_UNLIMITED;
 use crate::sys::h5p::{
@@ -679,7 +680,9 @@ impl DatasetCreateBuilder {
         self
     }
 
-    /// Sets whether to track and/or index the dataset's attribute creation order.
+    /// Sets whether the dataset's attribute creation order is tracked and indexed.
+    ///
+    /// See [`AttrCreationOrder`] for the available settings.
     pub fn attr_creation_order(&mut self, attr_creation_order: AttrCreationOrder) -> &mut Self {
         self.attr_creation_order = Some(attr_creation_order);
         self
@@ -741,7 +744,7 @@ impl DatasetCreateBuilder {
             h5try!(H5Pset_attr_phase_change(id, v.max_compact as _, v.min_dense as _));
         }
         if let Some(v) = self.attr_creation_order {
-            h5try!(H5Pset_attr_creation_order(id, v.bits() as _));
+            h5try!(H5Pset_attr_creation_order(id, v.into()));
         }
         Ok(())
     }
@@ -927,7 +930,7 @@ impl DatasetCreate {
             let count = h5try!(H5Pget_external_count(self.id()));
             let mut name: Vec<c_char> = vec![0; NAME_LEN + 1];
             for idx in 0..count {
-                let mut offset: libc::off_t = 0;
+                let mut offset: HDoff_t = 0;
                 let mut size: hsize_t = 0;
                 h5try!(H5Pget_external(
                     self.id(),
@@ -1018,11 +1021,12 @@ impl DatasetCreate {
 
     #[doc(hidden)]
     pub fn get_attr_creation_order(&self) -> Result<AttrCreationOrder> {
-        h5get!(H5Pget_attr_creation_order(self.id()): c_uint)
-            .map(AttrCreationOrder::from_bits_truncate)
+        h5get!(H5Pget_attr_creation_order(self.id()): c_uint).map(AttrCreationOrder::from_flags)
     }
 
-    /// Returns flags for whether attribute creation order will be tracked/indexed.
+    /// Returns whether the dataset's attribute creation order is tracked and indexed.
+    ///
+    /// Returns [`AttrCreationOrder::Untracked`] if the property cannot be read.
     pub fn attr_creation_order(&self) -> AttrCreationOrder {
         self.get_attr_creation_order().unwrap_or_default()
     }

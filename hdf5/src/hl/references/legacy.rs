@@ -5,9 +5,14 @@ use crate::internal_prelude::*;
 use crate::sys::{
     h5o::H5O_type_t,
     h5p::H5P_DEFAULT,
-    h5r::{hobj_ref_t, H5Rcreate, H5Rdereference, H5Rget_obj_type2, H5R_OBJECT1},
+    h5r::{hobj_ref_t, H5Rcreate, H5Rdereference, H5Rget_obj_type2},
 };
 use hdf5_types::H5Type;
+
+#[cfg(not(feature = "1.12.0"))]
+use crate::sys::h5r::H5R_OBJECT as H5R_OBJECT1;
+#[cfg(feature = "1.12.0")]
+use crate::sys::h5r::H5R_OBJECT1;
 
 use super::{private::ObjectReferencePrivate, ObjectReference};
 use crate::Location;

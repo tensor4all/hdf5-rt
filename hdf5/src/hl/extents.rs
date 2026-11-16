@@ -366,7 +366,7 @@ impl Extents {
 
     fn as_simple(&self) -> Option<&SimpleExtents> {
         match self {
-            Self::Simple(ref e) => Some(e),
+            Self::Simple(e) => Some(e),
             _ => None,
         }
     }
@@ -496,7 +496,7 @@ impl Display for Extents {
         match self {
             Self::Null => write!(f, "null"),
             Self::Scalar => write!(f, "scalar"),
-            Self::Simple(ref e) => write!(f, "{e}"),
+            Self::Simple(e) => write!(f, "{e}"),
         }
     }
 }

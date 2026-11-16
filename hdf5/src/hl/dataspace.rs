@@ -174,7 +174,7 @@ impl Dataspace {
         h5lock!(Self::from_id(match extents {
             Extents::Null => H5Screate(H5S_class_t::H5S_NULL),
             Extents::Scalar => H5Screate(H5S_class_t::H5S_SCALAR),
-            Extents::Simple(ref e) => {
+            Extents::Simple(e) => {
                 let (mut dims, mut maxdims) = (vec![], vec![]);
                 for extent in e.iter() {
                     dims.push(extent.dim as _);

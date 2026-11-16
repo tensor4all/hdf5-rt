@@ -33,6 +33,14 @@ pub type hssize_t = c_long;
 pub type haddr_t = u64;
 /// HDF5 tri-state type
 pub type htri_t = c_int;
+/// Signed external-file offset matching the host platform's `off_t` ABI.
+///
+/// The runtime loader cannot inspect how HDF5 was built, so this follows the
+/// platform: `i64` on every 64-bit target we support, `i32` otherwise.
+#[cfg(target_pointer_width = "64")]
+pub type HDoff_t = i64;
+#[cfg(not(target_pointer_width = "64"))]
+pub type HDoff_t = i32;
 
 /// Invalid HDF5 ID
 pub const H5I_INVALID_HID: hid_t = -1;
@@ -210,6 +218,16 @@ pub enum H5T_cset_t {
 
 pub const H5T_CSET_ASCII: H5T_cset_t = H5T_cset_t::H5T_CSET_ASCII;
 pub const H5T_CSET_UTF8: H5T_cset_t = H5T_cset_t::H5T_CSET_UTF8;
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum H5T_pad_t {
+    H5T_PAD_ERROR = -1,
+    H5T_PAD_ZERO = 0,
+    H5T_PAD_ONE = 1,
+    H5T_PAD_BACKGROUND = 2,
+    H5T_NPAD = 3,
+}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -783,9 +801,18 @@ pub const H5AC__CACHE_IMAGE__ENTRY_AGEOUT__NONE: c_int = -1;
 pub type H5L_info_t = H5L_info2_t;
 
 #[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum H5G_storage_type_t {
+    H5G_STORAGE_TYPE_UNKNOWN = -1,
+    H5G_STORAGE_TYPE_SYMBOL_TABLE = 0,
+    H5G_STORAGE_TYPE_COMPACT = 1,
+    H5G_STORAGE_TYPE_DENSE = 2,
+}
+
+#[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct H5G_info_t {
-    pub storage_type: c_int,
+    pub storage_type: H5G_storage_type_t,
     pub nlinks: hsize_t,
     pub max_corder: i64,
     pub mounted: hbool_t,
@@ -1109,6 +1136,7 @@ hdf5_function!(H5Gopen2, fn(loc_id: hid_t, name: *const c_char, gapl_id: hid_t) 
 hdf5_function!(H5Gclose, fn(group_id: hid_t) -> herr_t);
 hdf5_function!(H5Gget_create_plist, fn(group_id: hid_t) -> hid_t);
 hdf5_function!(H5Gget_info, fn(loc_id: hid_t, ginfo: *mut H5G_info_t) -> herr_t);
+hdf5_function!(H5Gcreate_anon, fn(loc_id: hid_t, gcpl_id: hid_t, gapl_id: hid_t) -> hid_t);
 
 // H5D (Dataset)
 hdf5_function!(
@@ -1330,6 +1358,11 @@ hdf5_function!(
     fn(src_id: hid_t, dst_id: hid_t, pcdata: *mut *mut H5T_cdata_t) -> H5T_conv_t
 );
 hdf5_function!(H5Tcompiler_conv, fn(src_id: hid_t, dst_id: hid_t) -> htri_t);
+hdf5_function!(H5Tdetect_class, fn(type_id: hid_t, cls: H5T_class_t) -> htri_t);
+hdf5_function!(H5Tget_pad, fn(type_id: hid_t, lsb: *mut H5T_pad_t, msb: *mut H5T_pad_t) -> herr_t);
+hdf5_function!(H5Tset_pad, fn(type_id: hid_t, lsb: H5T_pad_t, msb: H5T_pad_t) -> herr_t);
+hdf5_function!(H5Tset_sign, fn(type_id: hid_t, sign: H5T_sign_t) -> herr_t);
+hdf5_function!(H5Topen2, fn(loc_id: hid_t, name: *const c_char, tapl_id: hid_t) -> hid_t);
 
 // H5A (Attribute)
 hdf5_function!(
@@ -1366,6 +1399,17 @@ hdf5_function!(H5Aget_storage_size, fn(attr_id: hid_t) -> hsize_t);
 hdf5_function!(H5Adelete, fn(loc_id: hid_t, name: *const c_char) -> herr_t);
 hdf5_function!(H5Aexists, fn(obj_id: hid_t, attr_name: *const c_char) -> htri_t);
 hdf5_function!(H5Aget_num_attrs, fn(loc_id: hid_t) -> c_int);
+hdf5_function!(H5Aget_create_plist, fn(attr_id: hid_t) -> hid_t);
+hdf5_function!(
+    H5Aget_info_by_name,
+    fn(
+        loc_id: hid_t,
+        obj_name: *const c_char,
+        attr_name: *const c_char,
+        ainfo: *mut H5A_info_t,
+        lapl_id: hid_t,
+    ) -> herr_t
+);
 hdf5_function!(
     H5Aiterate2,
     fn(
@@ -1861,6 +1905,18 @@ hdf5_function!(H5Pget_char_encoding, fn(plist_id: hid_t, encoding: *mut H5T_cset
 hdf5_function!(H5Pget_istore_k, fn(plist_id: hid_t, ik: *mut c_uint) -> herr_t);
 hdf5_function!(H5Pset_istore_k, fn(plist_id: hid_t, ik: c_uint) -> herr_t);
 hdf5_function!(H5Pget_sym_k, fn(plist_id: hid_t, ik: *mut c_uint, lk: *mut c_uint) -> herr_t);
+hdf5_function!(
+    H5Pset_sizes,
+    fn(plist_id: hid_t, sizeof_addr: size_t, sizeof_size: size_t) -> herr_t
+);
+hdf5_function!(
+    H5Pget_link_phase_change,
+    fn(plist_id: hid_t, max_compact: *mut c_uint, min_dense: *mut c_uint) -> herr_t
+);
+hdf5_function!(
+    H5Pset_link_phase_change,
+    fn(plist_id: hid_t, max_compact: c_uint, min_dense: c_uint) -> herr_t
+);
 hdf5_function!(H5Pset_sym_k, fn(plist_id: hid_t, ik: c_uint, lk: c_uint) -> herr_t);
 hdf5_function!(
     H5Pget_sizes,
@@ -1990,7 +2046,7 @@ hdf5_function!(H5Zregister, fn(cls: *const H5Z_class2_t) -> herr_t);
 
 macro_rules! define_native_type {
     ($name:ident, $symbol:literal) => {
-        paste::paste! {
+        pastey::paste! {
             static [<_ $name _STORAGE>]: OnceLock<hid_t> = OnceLock::new();
 
             pub fn [<$name _get>]() -> hid_t {
@@ -2011,7 +2067,7 @@ macro_rules! define_native_type {
     // In HDF5 < 1.12, the _ID_g symbols exist but contain invalid values,
     // so we must use the _g symbols instead.
     ($name:ident, $symbol_new:literal, $symbol_old:literal) => {
-        paste::paste! {
+        pastey::paste! {
             static [<_ $name _STORAGE>]: OnceLock<hid_t> = OnceLock::new();
 
             pub fn [<$name _get>]() -> hid_t {
@@ -2152,6 +2208,7 @@ define_native_type!(H5E_FILE, "H5E_FILE_g");
 define_native_type!(H5E_IO, "H5E_IO_g");
 define_native_type!(H5E_FUNC, "H5E_FUNC_g");
 define_native_type!(H5E_ATOM, "H5E_ATOM_g");
+define_native_type!(H5E_ID, "H5E_ID_g");
 define_native_type!(H5E_CACHE, "H5E_CACHE_g");
 define_native_type!(H5E_LINK, "H5E_LINK_g");
 define_native_type!(H5E_BTREE, "H5E_BTREE_g");
@@ -2183,6 +2240,7 @@ define_native_type!(H5E_ALIGNMENT, "H5E_ALIGNMENT_g");
 define_native_type!(H5E_ALREADYEXISTS, "H5E_ALREADYEXISTS_g");
 define_native_type!(H5E_ALREADYINIT, "H5E_ALREADYINIT_g");
 define_native_type!(H5E_BADATOM, "H5E_BADATOM_g");
+define_native_type!(H5E_BADID, "H5E_BADID_g");
 define_native_type!(H5E_BADFILE, "H5E_BADFILE_g");
 define_native_type!(H5E_BADGROUP, "H5E_BADGROUP_g");
 define_native_type!(H5E_BADITER, "H5E_BADITER_g");
