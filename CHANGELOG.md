@@ -1,10 +1,188 @@
 # Changelog
 
+## hdf5-rt unreleased
+- Synced with upstream `metno/hdf5-rust` `main` at `2962c15` (hdf5 0.15.1 plus post-release
+  fixes) while keeping the runtime-loading (dlopen) layer.
+- New upstream APIs that are not version-gated now compile in the runtime fork:
+  `CommittedDatatype` and `Group::commit_datatype`/`committed_datatype`/`committed_datatypes`,
+  `IntegerLayout`/`IntegerLayoutBuilder`/`Padding`, `Datatype::opaque`/`with_byte_order`/
+  `is_committed`, `MajorErrorCode`/`MinorErrorCode` with `Error::contains_major`/
+  `contains_minor`, attribute create property lists, `GroupCreate` and `Group::info`.
+- APIs upstream gates on HDF5 version features (`File::free_sections`/`FreeSection`,
+  the `LibraryVersion` variants above `Earliest`, `FileAccessBuilder::file_locking`, ...)
+  stay compiled out here, as on `main`, because this fork does not enable those features;
+  turning them on needs a runtime version gate and is left as follow-up.
+- Ported the new upstream sys surface to `hdf5/src/sys`: attribute create plists, committed
+  datatypes, integer layouts, anonymous group creation, link phase change, integer pad/sign
+  accessors, `H5Aget_create_plist`, version-aware `H5O` info/token calls, and the external
+  storage offset ABI (`HDoff_t`). `HDoff_t` follows the target pointer width because the
+  loader cannot read the linked library's `H5_SIZEOF_OFF_T`; 32-bit targets with a
+  large-file-enabled HDF5 are outside the tested matrix.
+- Runtime error classes follow the HDF5 renames (`H5E_ATOM` -> `H5E_ID`, `H5E_BADATOM` ->
+  `H5E_BADID`) and the renamed logging code (`H5E_LOGFAIL` -> `H5E_LOGGING`), so the loader
+  also resolves error codes on HDF5 2.x.
+- Breaking: group iteration follows upstream 0.15 (`IndexType`, `IterationOrder`,
+  `IterationCursor`); the `iter_visit`/`iter_visit_default` signatures changed.
+- Dev-dependencies moved to `rand` 0.10, and `paste` was replaced by `pastey` to match upstream.
+
 ## hdf5 unreleased
-## hdf5-types unreleased
+- Fixed external dataset storage when HDF5 uses a different file-offset width from Rust's libc
+- Recognized HDF5 1.10.11 and 1.12.3 version features
+- Added `Datatype::opaque` to construct an opaque datatype with a specified size
+- Added `IntegerLayout`, `IntegerLayoutBuilder`, and `Padding` with `Datatype::integer_layout`, `from_integer_layout`, and `with_integer_layout` for integer storage representation inspection and configuration
+- Added `Datatype::with_byte_order` to return a copy with the requested byte order
+- Added `File::free_sections` and `FreeSection` to enumerate HDF5-tracked free-space sections (HDF5 1.10.0+)
 ## hdf5-derive unreleased
+## hdf5-types unreleased
 ## hdf5-sys unreleased
+- Fixed the offset ABI of `H5Pset_external` and `H5Pget_external` to match the linked HDF5 configuration
+- Recognized HDF5 1.10.11 and 1.12.3 version features
+- Fixed use of `cfg!(target_os)` and `cfg!(target_env)` in build.rs
 ## hdf5-src unreleased
+- Fixed static library discovery for bundled HDF5 Debug builds, including the high-level library
+- Fixed use of `cfg!(target_os)` and `cfg!(target_env)` in build.rs
+
+## hdf5 0.15.1
+Release date: Oct 26, 2026
+- Added `GroupCreateBuilder::link_phase_change` with the matching `GroupCreate` getters and `LinkPhaseChange`
+- Added `GroupCreateBuilder::set_filters`, `deflate`, `fletcher32`, `add_filter` and `clear_filters` with `GroupCreate::filters`, `has_filters` and `all_filters_avail`, to filter a group's dense link storage
+
+## hdf5-sys 0.12.5
+Release date: Oct 26, 2026
+- Fixed linking to hdf5_hl when this feature is requested
+
+## hdf5 0.15.0
+Release date: Sep 18, 2026
+- Added `AttributeBuilder::char_encoding` to set the character encoding of the attribute name
+- Added `AttributeCreate` and `AttributeCreateBuilder` property lists, and `Attribute::create_plist` / `Attribute::acpl`
+- Added `Datatype::is_committed`
+- Added `Group::commit_datatype`, `Group::committed_datatype` and `Group::committed_datatypes`
+- Deprecated `Group::named_datatypes`, use `Group::committed_datatypes` instead
+- Added `CommittedDatatype` with attribute access, returned by `Group::committed_datatype`, `Group::committed_datatypes` and the deprecated `Group::named_datatypes` (breaking change)
+- Changed `DatasetBuilder::empty_as` and `DatasetBuilder::with_data_as` to accept an existing `Datatype` or `CommittedDatatype` as well as a `TypeDescriptor`, through the new `DatasetType`, so a dataset can be created with a committed datatype.
+- Added `FileCreateBuilder::sizes` and `Sizeof` to set the offset and length sizes of a file (breaking change, `SizeofInfo` holds `Sizeof` instead of `usize`)
+- Added more variants to `LibraryVersion`. If you specified `Latest` before you may start generating files which are no longer compatible with earlier versions of `hdf5`
+- Exported `IterationOrder` and `IndexType`, the arguments of `Group::iter_visit`
+- Changed `Group::iter_visit` and `Group::iter_visit_default` to take an `FnMut(&str, LinkInfo) -> Result<()>` closure instead of an accumulator and a `bool` closure, and `LinkInfo::is_utf8` to `LinkInfo::char_encoding` (breaking change). An error returned by the closure is propagated, and `Group::groups`, `Group::datasets`, `Group::committed_datatypes` and `Group::member_names` now fail instead of returning a truncated list when a link cannot be resolved
+- Added `Group::member_names_by` and `Group::links` to list the links along an index type in an order, `Group::find_link` to stop a link iteration with a value, and `Group::iter_visit_from` with `IterationCursor` to skip links and resume a stopped iteration
+- Added `FileCreateBuilder::link_creation_order`, `GroupCreateBuilder::link_creation_order`, the matching getters and `LinkCreationOrder`, so a group can track and index link creation order
+- Changed `AttrCreationOrder` from bitflags to an enum with `Untracked`, `Tracked` and `Indexed`, matching `LinkCreationOrder` (breaking change)
+- Added `GroupCreateBuilder::attr_creation_order` and `GroupCreateBuilder::attr_phase_change` with the matching `GroupCreate` getters
+- Added `Location::iter_attrs`, `Location::find_attr` and `Location::iter_attrs_from` with `AttrInfo`, and `Location::attr_names_by` and `Location::attrs`, to iterate attributes by name or creation order in either direction, sharing `IndexType`, `IterationOrder` and `IterationCursor` with link iteration
+- Added `Location::attr_by_index` and `Location::attr_info`
+- Added `Group::info` with `GroupInfo` and `GroupStorageType`, exposing `H5Gget_info`
+- Changed `AttributeBuilder::empty_as` and `AttributeBuilder::with_data_as` to accept an existing `Datatype` or `CommittedDatatype` as well as a `TypeDescriptor`, through the new `DatasetType`, so an attribute can be created with a committed datatype.
+- Added library version functionality for hdf5 < 1.10.2
+- Fixed compilation error for parallel builds
+
+## hdf5-sys 0.12.4
+Release date: Sep 18, 2026
+- Rerun the build script when `HDF5_DIR` or `HDF5_VERSION` changes after a bundled build
+- Reworked export of `H5F_libver_t` for hdf5 versions < 1.10.2
+- Marked `H5F_libver_t` `non_exhaustive`
+
+## hdf5-sys 0.12.3
+Release date: Aug 29, 2026
+- Add fallback detection for brew install of hdf5
+
+## hdf5 0.14.1
+Release date: Aug 12, 2026
+- Line and file_name added to ErrorFrame
+
+## hdf5-src 0.10.4
+Release date: Aug 11, 2026
+- Build library at a consistent path on all platforms
+
+## hdf5-sys 0.11.4
+Release date: Aug 10, 2026
+- Backport support for hdf5 2.X series
+
+## hdf5-sys 0.12.2
+Release date: Aug 04, 2026
+- Add support for hdf5 2.2.0
+- Add symbols introduced in hdf5 2.2.0
+
+## hdf5-src 0.10.3
+Release date: Aug 04, 2026
+- Bundling hdf5 2.2.0
+
+## hdf5 0.14.0
+Release date: Jul 25, 2026
+- Fixed wrong f64 -> h5 datatype for big endian platforms
+- Added `read_raw_into` to read directly into a pre-allocated buffer
+- Added `MajorErrorCode` and `MinorErrorCode` for matching on HDF5 error codes
+- Added `Error::stack`, `Error::contains_major` and `Error::contains_minor`
+- Added `ErrorFrame::major_code` and `ErrorFrame::minor_code`
+- Added `ExpandedErrorStack::major_codes`, `minor_codes`, `contains_major` and `contains_minor`
+- Renamed error codes map to a single variant, `H5E_BADATOM` and `H5E_BADID` both give `BadId`
+- Fixed `append` masking the underlying error with `EEXIST` when the file exists but cannot be opened
+
+## hdf5-derive 0.10.2
+Release date: Jul 25, 2026
+- Updated syn to version 3
+
+## hdf5-sys 0.12.1
+Release date: Jul 25, 2026
+- Added missing H5E error code globals, including `H5E_VOL`, `H5E_CONTEXT` and `H5E_LOGGING`
+- Fixed version gates on `H5E_PLUGIN`, `H5E_OPENERROR` and `H5E_SETDISALLOWED`
+- Added `H5E_CANTLOCKFILE` and `H5E_CANTUNLOCKFILE` on hdf5 1.10.7 and later
+
+## hdf5 0.13.0
+Release date: Jul 02, 2026
+- Added `GroupCreate` property list and `GroupBuilder` for configurable group creation
+- Added support for setting `obj_track_times` when creating groups
+- Restrict enum conversions (breaking change, it is now an error reading incompatible enums)
+
+## hdf5 0.12.6
+Release date: Jun 25, 2026
+- Use edition 2024
+- Replace dependency paste with pastey
+
+## hdf5-types 0.11.1
+Release date: Jun 25, 2026
+- Use updated hdf5-sys
+
+## hdf5-derive 0.10.1
+Release date: Jun 25, 2026
+- Removed dependency proc-macro-error2
+
+## hdf5-sys 0.12.0
+Release date: Jun 25, 2026
+- Use edition 2024
+- Added unsafe to all C functions
+
+## hdf5 0.12.5
+Release date: Jun 04, 2026
+- Added option for setting file locking on access
+
+## hdf5 0.12.4
+Release date: Mar 23, 2026
+- Support for hdf5 2.1.0
+- MSRV has been increased to 1.85
+
+## hdf5-sys 0.11.3
+Release date: Mar 23, 2026
+- Support for hdf5 2.1.0
+
+## hdf5-src 0.10.2
+Release date: Mar 23, 2026
+- Update to hdf5 2.1.0
+
+## hdf5 v0.12.3
+Release date: Feb 10, 2026
+- Fixed compression of VarLenUnicode resulting in errors
+
+## hdf5 v0.12.2
+Release date: Feb 09, 2026
+- Fixed MPIO include
+
+## hdf5-sys v0.11.2
+Release date: Feb 09, 2026
+- Fixed name of MPIO include
+
+## hdf5-src v0.10.1
+Release date: Feb 09, 2026
+- Fixed name of cmake build option
 
 ## hdf5-sys v0.11.1
 Release date: Jan 20, 2026

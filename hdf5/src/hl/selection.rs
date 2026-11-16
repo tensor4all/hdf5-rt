@@ -194,8 +194,8 @@ impl RawSelection {
             Self::All => {
                 h5check(H5Sselect_all(space_id))?;
             }
-            Self::Points(ref coords) => set_points_selection(space_id, coords.view())?,
-            Self::RegularHyperslab(ref hyper) => set_regular_hyperslab(space_id, hyper)?,
+            Self::Points(coords) => set_points_selection(space_id, coords.view())?,
+            Self::RegularHyperslab(hyper) => set_regular_hyperslab(space_id, hyper)?,
             Self::ComplexHyperslab => fail!("Complex hyperslabs are not supported"),
         };
         Ok(())
@@ -836,14 +836,14 @@ impl Selection {
     pub fn in_ndim(&self) -> Option<usize> {
         match self {
             Self::All => None,
-            Self::Points(ref points) => {
+            Self::Points(points) => {
                 if points.shape() == [0, 0] {
                     None
                 } else {
                     Some(points.shape()[1])
                 }
             }
-            Self::Hyperslab(ref hyper) => Some(hyper.len()),
+            Self::Hyperslab(hyper) => Some(hyper.len()),
         }
     }
 
@@ -851,10 +851,8 @@ impl Selection {
     pub fn out_ndim(&self) -> Option<usize> {
         match self {
             Self::All => None,
-            Self::Points(ref points) => Some(usize::from(points.shape() != [0, 0])),
-            Self::Hyperslab(ref hyper) => {
-                Some(hyper.iter().map(|&s| usize::from(s.is_slice())).sum())
-            }
+            Self::Points(points) => Some(usize::from(points.shape() != [0, 0])),
+            Self::Hyperslab(hyper) => Some(hyper.iter().map(|&s| usize::from(s.is_slice())).sum()),
         }
     }
 
@@ -867,9 +865,9 @@ impl Selection {
         let in_shape = in_shape.as_ref();
         match self {
             Self::All => Ok(in_shape.to_owned()),
-            Self::Points(ref points) => check_coords(points, in_shape)
+            Self::Points(points) => check_coords(points, in_shape)
                 .and(Ok(if points.shape() == [0, 0] { vec![] } else { vec![points.shape()[0]] })),
-            Self::Hyperslab(ref hyper) => hyper
+            Self::Hyperslab(hyper) => hyper
                 .clone()
                 .into_raw(in_shape)?
                 .iter()
@@ -892,7 +890,7 @@ impl Selection {
 
     /// Returns `true` if the selection is a sequence of points.
     pub fn is_points(&self) -> bool {
-        if let Self::Points(ref points) = self {
+        if let Self::Points(points) = self {
             points.shape() != [0, 0]
         } else {
             false
@@ -918,7 +916,7 @@ impl Display for Selection {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::All => write!(f, ".."),
-            Self::Points(ref points) => {
+            Self::Points(points) => {
                 if points.shape() == [0, 0] {
                     write!(f, "[]")
                 } else {

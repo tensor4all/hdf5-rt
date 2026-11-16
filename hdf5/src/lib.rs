@@ -46,25 +46,33 @@
 // To build docs locally:
 // RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --features blosc,lzf
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![allow(unsafe_op_in_unsafe_fn)]
 
 mod export {
     pub use crate::{
         class::from_id,
         dim::{Dimension, Ix},
         error::{silence_errors, Error, ErrorFrame, ErrorStack, ExpandedErrorStack, Result},
+        error_codes::{MajorErrorCode, MinorErrorCode},
         hl::extents::{Extent, Extents, SimpleExtents},
         hl::selection::{Hyperslab, Selection, SliceOrIndex},
         hl::{
             references::{ObjectReference, ObjectReference1, ReferencedObject},
-            Attribute, AttributeBuilder, AttributeBuilderData, AttributeBuilderEmpty,
-            AttributeBuilderEmptyShape, ByteReader, Container, Conversion, Dataset, DatasetBuilder,
-            DatasetBuilderData, DatasetBuilderEmpty, DatasetBuilderEmptyShape, Dataspace, Datatype,
-            File, FileBuilder, Group, LinkInfo, LinkType, Location, LocationInfo, LocationToken,
-            LocationType, Object, OpenMode, PropertyList, Reader, Writer,
+            AttrInfo, Attribute, AttributeBuilder, AttributeBuilderData, AttributeBuilderEmpty,
+            AttributeBuilderEmptyShape, ByteReader, CommittedDatatype, Container, Conversion,
+            Dataset, DatasetBuilder, DatasetBuilderData, DatasetBuilderEmpty,
+            DatasetBuilderEmptyShape, DatasetType, Dataspace, Datatype, File, FileBuilder, Group,
+            GroupBuilder, GroupInfo, GroupStorageType, IndexType, IterationCursor, IterationOrder,
+            LinkInfo, LinkType, Location, LocationInfo, LocationToken, LocationType, Object,
+            OpenMode, PropertyList, Reader, Writer,
         },
     };
 
-    // ObjectReference2 requires HDF5 1.12.1+ which is satisfied by our minimum requirement
+    #[cfg(feature = "1.10.0")]
+    pub use crate::hl::FreeSection;
+
+    // ObjectReference2 requires HDF5 1.12.1+, which the runtime loader reports at runtime;
+    // the minimum supported library (1.10.4) still exports the underlying entry points.
     pub use crate::hl::references::ObjectReference2;
 
     #[doc(hidden)]
@@ -88,11 +96,16 @@ mod export {
 
     /// Datatype objects for defining the layout of a data element.
     pub mod datatype {
-        pub use crate::hl::datatype::{ByteOrder, Conversion, Datatype};
+        pub use crate::hl::committed_datatype::CommittedDatatype;
+        pub use crate::hl::datatype::{
+            ByteOrder, Conversion, Datatype, IntegerLayout, IntegerLayoutBuilder, Padding,
+        };
     }
 
     /// HDF5 file objects.
     pub mod file {
+        #[cfg(feature = "1.10.0")]
+        pub use crate::hl::file::FreeSection;
         pub use crate::hl::file::{File, FileBuilder, OpenMode};
         pub use crate::hl::plist::file_access::*;
         pub use crate::hl::plist::file_create::*;
@@ -100,14 +113,22 @@ mod export {
 
     /// Property list objects.
     pub mod plist {
+        pub use crate::hl::plist::attribute_create::{
+            AttributeCreate, AttributeCreateBuilder, CharEncoding,
+        };
         pub use crate::hl::plist::dataset_access::{DatasetAccess, DatasetAccessBuilder};
         pub use crate::hl::plist::dataset_create::{DatasetCreate, DatasetCreateBuilder};
         pub use crate::hl::plist::file_access::{FileAccess, FileAccessBuilder};
         pub use crate::hl::plist::file_create::{FileCreate, FileCreateBuilder};
+        pub use crate::hl::plist::group_create::{GroupCreate, GroupCreateBuilder};
         pub use crate::hl::plist::link_create::{LinkCreate, LinkCreateBuilder};
         pub use crate::hl::plist::object_copy::{ObjectCopy, ObjectCopyBuilder};
         pub use crate::hl::plist::{PropertyList, PropertyListClass};
 
+        /// Attribute creation property lists.
+        pub mod attribute_create {
+            pub use crate::hl::plist::attribute_create::*;
+        }
         /// Dataset access property lists.
         pub mod dataset_access {
             pub use crate::hl::plist::dataset_access::*;
@@ -123,6 +144,10 @@ mod export {
         /// File creation property lists.
         pub mod file_create {
             pub use crate::hl::plist::file_create::*;
+        }
+        /// Group creation property lists.
+        pub mod group_create {
+            pub use crate::hl::plist::group_create::*;
         }
         /// Link creation property lists.
         pub mod link_create {
@@ -149,6 +174,7 @@ mod class;
 
 mod dim;
 mod error;
+mod error_codes;
 #[doc(hidden)]
 pub mod globals;
 mod handle;

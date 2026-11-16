@@ -3,14 +3,15 @@ use std::fmt;
 use std::io::{Read, Seek, SeekFrom};
 
 use ndarray::{s, Array1, Array2, ArrayD, IxDyn, SliceInfo};
-use rand::prelude::{Rng, SeedableRng, SmallRng};
+use rand::prelude::{Rng, RngExt, SeedableRng, SmallRng};
 
 use hdf5_rt;
+use hdf5_rt as hdf5;
 use hdf5_rt::types::TypeDescriptor;
 
 mod common;
 
-use self::common::gen::{gen_arr, gen_slice, Gen};
+use self::common::generate::{gen_arr, gen_slice, Gen};
 use self::common::util::new_in_memory_file;
 
 fn test_write_slice<T, R>(
@@ -270,13 +271,14 @@ where
         packed.push(true);
     }
 
-    let mut rng = SmallRng::seed_from_u64(42);
     let file = new_in_memory_file()?;
-
+    let mut rng = SmallRng::seed_from_u64(42);
     for packed in &packed {
         for ndim in 0..=4 {
             for _ in 0..=20 {
                 for mode in 0..4 {
+                    // let (ds, arr) = make_test_dataset::<T>(&mut rng, &file, *packed, ndim)?;
+
                     let arr: ArrayD<T> = gen_arr(&mut rng, ndim);
 
                     let ds: hdf5_rt::Dataset =
@@ -304,6 +306,72 @@ where
     Ok(())
 }
 
+fn test_read_into<T>(ds: &hdf5::Dataset, arr: &ArrayD<T>, v0: T) -> hdf5::Result<()>
+where
+    T: hdf5::H5Type + fmt::Debug + PartialEq + Copy,
+{
+    ds.write(arr)?;
+
+    let arr_size = arr.len();
+
+    // Allocates exactly what is needed
+    let mut buffer: Vec<T> = vec![v0; arr_size];
+    let read_size = ds.read_into_raw(&mut buffer)?;
+    assert_eq!(read_size, arr_size);
+    assert_eq!(buffer.as_slice(), arr.as_slice().unwrap());
+
+    // Allocates more elements than needed
+    let mut buffer: Vec<T> = vec![v0; 2 * arr_size];
+    let read_size = ds.read_into_raw(&mut buffer)?;
+    assert_eq!(read_size, arr_size);
+    assert_eq!(&buffer[..arr_size], arr.as_slice().unwrap());
+
+    // Allocates fewer elements than needed
+    if arr_size != 0 {
+        let mut buffer: Vec<T> = vec![v0; arr_size - 1];
+        let read_size = ds.read_into_raw(&mut buffer);
+        assert!(read_size.is_err());
+    }
+
+    Ok(())
+}
+
+fn test_read_into_write<T>() -> hdf5::Result<()>
+where
+    T: hdf5::H5Type + fmt::Debug + PartialEq + Gen + Copy,
+{
+    let td = T::type_descriptor();
+    let mut packed = vec![false];
+    if let TypeDescriptor::Compound(_) = td {
+        packed.push(true);
+    }
+
+    let mut rng = SmallRng::seed_from_u64(42);
+    let file = new_in_memory_file()?;
+
+    for packed in &packed {
+        for ndim in 0..=4 {
+            for _ in 0..=20 {
+                let arr: ArrayD<T> = gen_arr(&mut rng, ndim);
+
+                let ds: hdf5::Dataset =
+                    file.new_dataset::<T>().packed(*packed).shape(arr.shape()).create("x")?;
+                let ds = scopeguard::guard(ds, |ds| {
+                    drop(ds);
+                    drop(file.unlink("x"));
+                });
+
+                let v0 = T::random(&mut rng);
+                //v0 stands for default value needed to allocated buffer
+                //This value avoid restrincting Default to T
+                test_read_into(&ds, &arr, v0)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[test]
 fn test_read_write_primitive() -> hdf5_rt::Result<()> {
     test_read_write::<i8>()?;
@@ -317,6 +385,19 @@ fn test_read_write_primitive() -> hdf5_rt::Result<()> {
     test_read_write::<bool>()?;
     test_read_write::<f32>()?;
     test_read_write::<f64>()?;
+
+    test_read_into_write::<i8>()?;
+    test_read_into_write::<i16>()?;
+    test_read_into_write::<i32>()?;
+    test_read_into_write::<i64>()?;
+    test_read_into_write::<u8>()?;
+    test_read_into_write::<u16>()?;
+    test_read_into_write::<u32>()?;
+    test_read_into_write::<u64>()?;
+    test_read_into_write::<bool>()?;
+    test_read_into_write::<f32>()?;
+    test_read_into_write::<f64>()?;
+
     Ok(())
 }
 
@@ -324,6 +405,7 @@ fn test_read_write_primitive() -> hdf5_rt::Result<()> {
 #[test]
 fn test_read_write_f16() -> hdf5_rt::Result<()> {
     test_read_write::<::half::f16>()?;
+    test_read_into_write::<::half::f16>()?;
     Ok(())
 }
 
@@ -332,6 +414,8 @@ fn test_read_write_f16() -> hdf5_rt::Result<()> {
 fn test_read_write_complex() -> hdf5_rt::Result<()> {
     test_read_write::<::num_complex::Complex32>()?;
     test_read_write::<::num_complex::Complex64>()?;
+    test_read_into_write::<::num_complex::Complex32>()?;
+    test_read_into_write::<::num_complex::Complex64>()?;
     Ok(())
 }
 
@@ -380,4 +464,32 @@ fn remove_attr() {
     assert!(ds.attr("bar").is_ok());
     ds.delete_attr("bar").unwrap();
     assert!(ds.attr("bar").is_err());
+}
+
+#[test]
+fn test_resize_non_resizable_dataset() {
+    let file = new_in_memory_file().unwrap();
+    // A dataset with contiguous storage has no maxshape and cannot be resized
+    let ds = file.new_dataset::<i32>().shape([4]).create("fixed").unwrap();
+    let err = ds.resize([8]).unwrap_err();
+    // Minor code varies by HDF5 version, only check the major
+    let minors: Vec<_> = err.stack().unwrap().minor_codes().collect();
+    assert!(err.contains_major(hdf5::MajorErrorCode::Dataset), "minors={minors:?}: {err}");
+
+    // A chunked dataset with an unlimited axis resizes without error.
+    let ds = file.new_dataset::<i32>().shape((1.., 3)).chunk((4, 3)).create("resizable").unwrap();
+    ds.resize([5, 3]).unwrap();
+    assert_eq!(ds.shape(), [5, 3]);
+}
+
+#[test]
+fn test_chunk_rank_must_match_dataset_rank() {
+    let file = new_in_memory_file().unwrap();
+    // A 1-D chunk on a 2-D dataset is rejected in Rust before reaching FFI
+    let err = file.new_dataset::<i32>().shape([4, 3]).chunk([2]).create("d").unwrap_err();
+    assert_eq!(err.to_string(), "Expected chunk ndim 2, got 1");
+    assert!(err.stack().is_none(), "expected a Rust-side error, got a stack: {err:?}");
+
+    // matching rank
+    file.new_dataset::<i32>().shape([4, 3]).chunk([2, 3]).create("ok").unwrap();
 }

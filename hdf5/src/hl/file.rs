@@ -3,6 +3,8 @@ use std::mem;
 use std::ops::Deref;
 use std::path::Path;
 
+#[cfg(feature = "1.10.0")]
+use crate::sys::h5f::{H5F_sect_info_t, H5Fget_free_sections, H5FD_MEM_DEFAULT};
 use crate::sys::h5f::{
     H5Fclose, H5Fcreate, H5Fflush, H5Fget_access_plist, H5Fget_create_plist, H5Fget_filesize,
     H5Fget_freespace, H5Fget_intent, H5Fget_obj_count, H5Fget_obj_ids, H5Fopen, H5F_ACC_DEFAULT,
@@ -31,6 +33,18 @@ pub enum OpenMode {
     CreateExcl,
     /// Open a file as read/write if exists, create otherwise.
     Append,
+}
+
+/// A free-space section tracked by HDF5.
+///
+/// Returned by [`File::free_sections`].
+#[cfg(feature = "1.10.0")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FreeSection {
+    /// The start address of the section in the HDF5 file, in bytes.
+    pub addr: u64,
+    /// The size of the section, in bytes.
+    pub size: u64,
 }
 
 /// HDF5 file object.
@@ -118,6 +132,62 @@ impl File {
     /// Returns the free space in the file in bytes (or 0 if the file handle is invalid).
     pub fn free_space(&self) -> u64 {
         h5lock!(H5Fget_freespace(self.id())).max(0) as _
+    }
+
+    /// Returns the free-space sections tracked by all free-space managers in the file.
+    ///
+    /// Returns an empty vector if no sections are tracked. The sections are returned
+    /// in an unspecified order and describe the file at the time of the query.
+    ///
+    /// Only sections tracked by HDF5 are included, not other padding or unaccounted
+    /// space. Tracking and persistence across closing and reopening the file depend
+    /// on the file's free-space management strategy. An empty result does not imply
+    /// that the file contains no unused bytes.
+    ///
+    /// Requires HDF5 1.10.0 or later.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file handle is invalid, HDF5 cannot retrieve the
+    /// sections, or the section count increases during retrieval.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use hdf5_rt::File;
+    ///
+    /// let file = File::with_options()
+    ///     .with_fapl(|p| p.core_filebacked(false))
+    ///     .create("free_sections.h5")?;
+    ///
+    /// for section in file.free_sections()? {
+    ///     println!("{}: {} bytes", section.addr, section.size);
+    /// }
+    /// # Ok::<(), hdf5_rt::Error>(())
+    /// ```
+    #[cfg(feature = "1.10.0")]
+    pub fn free_sections(&self) -> Result<Vec<FreeSection>> {
+        h5lock!({
+            let count =
+                h5try!(H5Fget_free_sections(self.id(), H5FD_MEM_DEFAULT, 0, std::ptr::null_mut()))
+                    as usize;
+            if count == 0 {
+                return Ok(Vec::new());
+            }
+            let mut sections = vec![H5F_sect_info_t::default(); count];
+            let actual = h5try!(H5Fget_free_sections(
+                self.id(),
+                H5FD_MEM_DEFAULT,
+                count,
+                sections.as_mut_ptr()
+            )) as usize;
+            ensure!(actual <= count, "Free-space section count increased during retrieval");
+            sections.truncate(actual);
+            Ok(sections
+                .into_iter()
+                .map(|section| FreeSection { addr: section.addr, size: section.size })
+                .collect())
+        })
     }
 
     /// Returns true if the file was opened in a read-only mode.
@@ -232,8 +302,15 @@ impl FileBuilder {
     pub fn open_as<P: AsRef<Path>>(&self, filename: P, mode: OpenMode) -> Result<File> {
         let filename = filename.as_ref();
         if mode == OpenMode::Append {
-            if let Ok(file) = self.open_as(filename, OpenMode::ReadWrite) {
-                return Ok(file);
+            match self.open_as(filename, OpenMode::ReadWrite) {
+                Ok(file) => return Ok(file),
+                Err(err) => {
+                    // If the file exists it is unreadable (corrupt, locked, no permission), so
+                    // report that instead of falling through to create, which would give a misleading EEXIST error.
+                    if err.contains_minor(MinorErrorCode::NotHdf5) || filename.exists() {
+                        return Err(err);
+                    }
+                }
             }
         }
         let filename = to_cstring(

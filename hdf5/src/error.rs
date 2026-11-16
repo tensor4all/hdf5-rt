@@ -8,6 +8,8 @@ use std::ptr::{self, addr_of_mut};
 
 use ndarray::ShapeError;
 
+use crate::error_codes::{MajorErrorCode, MinorErrorCode};
+
 use crate::sys::h5e::{
     H5E_auto2_t, H5E_error2_t, H5Eget_current_stack, H5Eget_msg, H5Eprint2, H5Eset_auto2, H5Ewalk2,
     H5E_DEFAULT, H5E_WALK_DOWNWARD,
@@ -81,7 +83,13 @@ impl ErrorStack {
                     let (desc, func) = (string_from_cstr(e.desc), string_from_cstr(e.func_name));
                     let major = get_h5_str(|m, s| H5Eget_msg(e.maj_num, ptr::null_mut(), m, s))?;
                     let minor = get_h5_str(|m, s| H5Eget_msg(e.min_num, ptr::null_mut(), m, s))?;
-                    Ok(ErrorFrame::new(&desc, &func, &major, &minor))
+                    let major_code = MajorErrorCode::from_id(e.maj_num);
+                    let minor_code = MinorErrorCode::from_id(e.min_num);
+                    let line = e.line.try_into().unwrap();
+                    let file_name = string_from_cstr(e.file_name);
+                    Ok(ErrorFrame::new(
+                        &desc, &func, &major, &minor, major_code, minor_code, line, file_name,
+                    ))
                 };
                 match closure(*err_desc) {
                     Ok(frame) => {
@@ -116,16 +124,33 @@ pub struct ErrorFrame {
     major: String,
     minor: String,
     description: String,
+    major_code: MajorErrorCode,
+    minor_code: MinorErrorCode,
+    line: usize,
+    file_name: String,
 }
 
 impl ErrorFrame {
-    pub(crate) fn new(desc: &str, func: &str, major: &str, minor: &str) -> Self {
+    pub(crate) fn new(
+        desc: &str,
+        func: &str,
+        major: &str,
+        minor: &str,
+        major_code: MajorErrorCode,
+        minor_code: MinorErrorCode,
+        line: usize,
+        file_name: String,
+    ) -> Self {
         Self {
             desc: desc.into(),
             func: func.into(),
             major: major.into(),
             minor: minor.into(),
             description: format!("{func}(): {desc}"),
+            major_code,
+            minor_code,
+            line,
+            file_name: file_name.into(),
         }
     }
 
@@ -134,13 +159,37 @@ impl ErrorFrame {
         self.desc.as_ref()
     }
 
+    /// Returns the function name.
+    pub fn func(&self) -> &str {
+        self.func.as_ref()
+    }
+
+    /// Returns the major code: which part of the library failed.
+    pub fn major_code(&self) -> MajorErrorCode {
+        self.major_code
+    }
+
+    /// Returns the minor code: how the operation failed.
+    pub fn minor_code(&self) -> MinorErrorCode {
+        self.minor_code
+    }
+
     /// Returns a message with the error description and the relevant function name.
     pub fn description(&self) -> &str {
         self.description.as_ref()
     }
 
-    /// Returns a message with the error description and the relevant function name, file name,
-    /// and line number.
+    /// Returns the line in the source which triggered the error.
+    pub fn line(&self) -> usize {
+        self.line
+    }
+
+    /// Returns the file name in the source which triggered the error.
+    pub fn file_name(&self) -> &str {
+        self.file_name.as_ref()
+    }
+
+    /// Returns a message with the error description and the relevant function name.
     pub fn detail(&self) -> Option<String> {
         Some(format!("Error in {}(): {} [{}: {}]", self.func, self.desc, self.major, self.minor))
     }
@@ -174,20 +223,40 @@ impl ExpandedErrorStack {
 
     pub(crate) fn push(&mut self, frame: ErrorFrame) {
         self.frames.push(frame);
-        if !self.is_empty() {
-            let top_desc = self.frames[0].description().to_owned();
-            if self.len() == 1 {
-                self.description = Some(top_desc);
-            } else {
-                self.description =
-                    Some(format!("{}: {}", top_desc, self.frames[self.len() - 1].desc()));
-            }
+
+        self.description = match self.frames[..] {
+            [] => unreachable!(),
+            [ref first] => Some(first.description().to_owned()),
+            [ref first, .., ref last] => Some(format!("{}: {}", first.description(), last.desc())),
         }
     }
 
     /// Returns the top [`ErrorFrame`] of the stack, or `None` if it is empty.
     pub fn top(&self) -> Option<&ErrorFrame> {
         self.first()
+    }
+
+    /// Returns the major code of every frame, outermost first.
+    pub fn major_codes(&self) -> impl DoubleEndedIterator<Item = MajorErrorCode> + '_ {
+        self.frames.iter().map(ErrorFrame::major_code)
+    }
+
+    /// Returns the minor code of every frame, outermost first.
+    pub fn minor_codes(&self) -> impl DoubleEndedIterator<Item = MinorErrorCode> + '_ {
+        self.frames.iter().map(ErrorFrame::minor_code)
+    }
+
+    /// Returns whether any frame in the stack carries the given major code.
+    pub fn contains_major(&self, code: MajorErrorCode) -> bool {
+        self.major_codes().any(|c| c == code)
+    }
+
+    /// Returns whether any frame in the stack carries the given minor code.
+    ///
+    /// The cause is usually on an inner frame, so prefer this over [`top`](Self::top): opening
+    /// a corrupt file reports `CantOpenFile` on the outermost frame and `NotHdf5` further down.
+    pub fn contains_minor(&self, code: MinorErrorCode) -> bool {
+        self.minor_codes().any(|c| c == code)
     }
 
     /// Returns the description of the error on top of the stack.
@@ -226,6 +295,37 @@ impl Error {
         } else {
             Err(Self::Internal("Could not get errorstack".to_owned()))
         }
+    }
+
+    /// Returns the expanded error stack, or `None` if there is none to expand.
+    pub fn stack(&self) -> Option<ExpandedErrorStack> {
+        match *self {
+            Self::Internal(_) => None,
+            Self::HDF5(ref stack) => stack.clone().expand().ok(),
+        }
+    }
+
+    /// Returns whether any frame carries the given major code, `false` for
+    /// [`Internal`](Self::Internal) errors.
+    pub fn contains_major(&self, code: MajorErrorCode) -> bool {
+        self.stack().is_some_and(|s| s.contains_major(code))
+    }
+
+    /// Returns whether any frame carries the given minor code, `false` for
+    /// [`Internal`](Self::Internal) errors.
+    ///
+    /// ```no_run
+    /// use hdf5_rt as hdf5;
+    /// use hdf5::MinorErrorCode;
+    ///
+    /// # let dir = tempfile::tempdir().unwrap();
+    /// # let path = dir.path().join("corrupt.h5");
+    /// # std::fs::write(&path, b"not an HDF5 file").unwrap();
+    /// let err = hdf5::File::open(&path).unwrap_err();
+    /// assert!(err.contains_minor(MinorErrorCode::NotHdf5));
+    /// ```
+    pub fn contains_minor(&self, code: MinorErrorCode) -> bool {
+        self.stack().is_some_and(|s| s.contains_minor(code))
     }
 }
 

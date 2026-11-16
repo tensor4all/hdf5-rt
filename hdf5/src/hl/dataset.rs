@@ -218,8 +218,9 @@ impl DatasetBuilder {
         self.empty_as(&T::type_descriptor())
     }
 
-    pub fn empty_as(self, type_desc: &TypeDescriptor) -> DatasetBuilderEmpty {
-        DatasetBuilderEmpty { builder: self.builder, type_desc: type_desc.clone() }
+    /// Sets the dataset's type from a descriptor or an existing datatype, see [`DatasetType`].
+    pub fn empty_as(self, dtype: impl Into<DatasetType>) -> DatasetBuilderEmpty {
+        DatasetBuilderEmpty { builder: self.builder, dtype: dtype.into() }
     }
 
     pub fn with_data<'d, A, T, D>(self, data: A) -> DatasetBuilderData<'d, T, D>
@@ -228,13 +229,15 @@ impl DatasetBuilder {
         T: H5Type,
         D: ndarray::Dimension,
     {
-        self.with_data_as::<A, T, D>(data, &T::type_descriptor())
+        self.with_data_as::<A, T, D>(data, T::type_descriptor())
     }
 
+    /// Sets the dataset's data and its type from a descriptor or an existing datatype, see
+    /// [`DatasetType`].
     pub fn with_data_as<'d, A, T, D>(
         self,
         data: A,
-        type_desc: &TypeDescriptor,
+        dtype: impl Into<DatasetType>,
     ) -> DatasetBuilderData<'d, T, D>
     where
         A: Into<ArrayView<'d, T, D>>,
@@ -244,7 +247,7 @@ impl DatasetBuilder {
         DatasetBuilderData {
             builder: self.builder,
             data: data.into(),
-            type_desc: type_desc.clone(),
+            dtype: dtype.into(),
             conv: Conversion::Soft,
         }
     }
@@ -278,18 +281,84 @@ impl DatasetBuilder {
     // }
 }
 
+/// The type a dataset is created with.
+///
+/// [`DatasetBuilder::empty_as`] and [`DatasetBuilder::with_data_as`] take anything that
+/// converts into it: a [`TypeDescriptor`], a [`Datatype`] or a [`CommittedDatatype`], by
+/// value or by reference.
+///
+/// A descriptor becomes a transient datatype when the dataset is created, laid out as
+/// [`packed`](DatasetBuilder::packed) says. An existing datatype is passed to `H5Dcreate2`
+/// as is, so `packed` is rejected for it. With a committed datatype from the same file the
+/// dataset stores a reference to the committed type instead of a copy of it. A committed
+/// datatype from another file is stored as a copy from HDF5 1.8.18 and 1.10.1 on, and is
+/// rejected on older libraries, which would write a reference the file cannot resolve.
+#[derive(Clone, Debug)]
+pub enum DatasetType {
+    /// A descriptor, turned into a transient datatype when the dataset is created.
+    Descriptor(TypeDescriptor),
+    /// An existing datatype, used as is.
+    Datatype(Datatype),
+}
+
+impl DatasetType {
+    /// The datatype the data is converted to, for checking the conversion.
+    pub(crate) fn to_datatype(&self) -> Result<Datatype> {
+        match self {
+            Self::Descriptor(desc) => Datatype::from_descriptor(desc),
+            Self::Datatype(dtype) => Ok(dtype.clone()),
+        }
+    }
+}
+
+impl From<TypeDescriptor> for DatasetType {
+    fn from(desc: TypeDescriptor) -> Self {
+        Self::Descriptor(desc)
+    }
+}
+
+impl From<&TypeDescriptor> for DatasetType {
+    fn from(desc: &TypeDescriptor) -> Self {
+        Self::Descriptor(desc.clone())
+    }
+}
+
+impl From<Datatype> for DatasetType {
+    fn from(dtype: Datatype) -> Self {
+        Self::Datatype(dtype)
+    }
+}
+
+impl From<&Datatype> for DatasetType {
+    fn from(dtype: &Datatype) -> Self {
+        Self::Datatype(dtype.clone())
+    }
+}
+
+impl From<CommittedDatatype> for DatasetType {
+    fn from(dtype: CommittedDatatype) -> Self {
+        Self::Datatype(dtype.as_datatype().clone())
+    }
+}
+
+impl From<&CommittedDatatype> for DatasetType {
+    fn from(dtype: &CommittedDatatype) -> Self {
+        Self::Datatype(dtype.as_datatype().clone())
+    }
+}
+
 #[derive(Clone)]
 /// A dataset builder with the type known
 pub struct DatasetBuilderEmpty {
     builder: DatasetBuilderInner,
-    type_desc: TypeDescriptor,
+    dtype: DatasetType,
 }
 
 impl DatasetBuilderEmpty {
     pub fn shape<S: Into<Extents>>(self, extents: S) -> DatasetBuilderEmptyShape {
         DatasetBuilderEmptyShape {
             builder: self.builder,
-            type_desc: self.type_desc,
+            dtype: self.dtype,
             extents: extents.into(),
         }
     }
@@ -302,13 +371,13 @@ impl DatasetBuilderEmpty {
 /// A dataset builder with type and shape known
 pub struct DatasetBuilderEmptyShape {
     builder: DatasetBuilderInner,
-    type_desc: TypeDescriptor,
+    dtype: DatasetType,
     extents: Extents,
 }
 
 impl DatasetBuilderEmptyShape {
     pub fn create<'n, T: Into<Maybe<&'n str>>>(&self, name: T) -> Result<Dataset> {
-        h5lock!(self.builder.create(&self.type_desc, name.into().into(), &self.extents))
+        h5lock!(self.builder.create(&self.dtype, name.into().into(), &self.extents))
     }
 }
 
@@ -317,7 +386,7 @@ impl DatasetBuilderEmptyShape {
 pub struct DatasetBuilderData<'d, T, D> {
     builder: DatasetBuilderInner,
     data: ArrayView<'d, T, D>,
-    type_desc: TypeDescriptor,
+    dtype: DatasetType,
     conv: Conversion,
 }
 
@@ -347,9 +416,9 @@ where
         let name = name.into().into();
         h5lock!({
             let dtype_src = Datatype::from_type::<T>()?;
-            let dtype_dst = Datatype::from_descriptor(&self.type_desc)?;
+            let dtype_dst = self.dtype.to_datatype()?;
             dtype_src.ensure_convertible(&dtype_dst, self.conv)?;
-            let ds = self.builder.create(&self.type_desc, name, &extents)?;
+            let ds = self.builder.create(&self.dtype, name, &extents)?;
             if let Err(err) = ds.write(self.data.view()) {
                 self.builder.try_unlink(name);
                 Err(err)
@@ -541,16 +610,71 @@ impl DatasetBuilderInner {
         }
     }
 
+    /// Creates the dataset with the in-file datatype built from `dtype`.
+    ///
+    /// # Safety
+    ///
+    /// Must be called with the library lock held, see `h5lock!`.
     unsafe fn create(
         &self,
-        desc: &TypeDescriptor,
+        dtype: &DatasetType,
         name: Option<&str>,
         extents: &Extents,
     ) -> Result<Dataset> {
-        // construct in-file type descriptor; convert to packed representation if needed
-        let desc = if self.packed { desc.to_packed_repr() } else { desc.to_c_repr() };
-        let dtype = Datatype::from_descriptor(&desc)?;
+        let dtype = match dtype {
+            DatasetType::Descriptor(desc) => {
+                // build the in-file type from the descriptor, packed if requested
+                let desc = if self.packed { desc.to_packed_repr() } else { desc.to_c_repr() };
+                Datatype::from_descriptor(&desc)?
+            }
+            DatasetType::Datatype(dtype) => {
+                ensure!(!self.packed, "packed layout cannot be applied to an existing datatype");
+                #[cfg(not(any(
+                    all(feature = "1.8.18", not(feature = "1.10.0")),
+                    feature = "1.10.1"
+                )))]
+                self.ensure_same_file(dtype)?;
+                dtype.clone()
+            }
+        };
+        self.create_dataset(&dtype, name, extents)
+    }
 
+    /// Rejects a committed datatype that lives in another file than the dataset.
+    ///
+    /// Libraries before 1.8.18, and 1.10.0, write such a dataset with a reference into
+    /// the other file, and the dataset cannot be opened again. Later libraries store a
+    /// copy of the type instead, so they need no check.
+    #[cfg(not(any(all(feature = "1.8.18", not(feature = "1.10.0")), feature = "1.10.1")))]
+    fn ensure_same_file(&self, dtype: &Datatype) -> Result<()> {
+        use crate::hl::location::H5O_get_info;
+
+        if !dtype.is_committed() {
+            return Ok(());
+        }
+        let parent = try_ref_clone!(self.parent);
+        let parent_file = H5O_get_info(parent.id(), false)?.fileno;
+        let dtype_file = H5O_get_info(dtype.id(), false)?.fileno;
+        ensure!(
+            parent_file == dtype_file,
+            "committed datatype is in a different file than the dataset, which this HDF5 \
+             version cannot store"
+        );
+        Ok(())
+    }
+
+    /// Creates the dataset with `dtype`, the property lists and the dataspace.
+    ///
+    /// # Safety
+    ///
+    /// Must be called with the library lock held, see `h5lock!`. The raw
+    /// `H5Dcreate2` and `H5Dcreate_anon` calls below rely on it.
+    unsafe fn create_dataset(
+        &self,
+        dtype: &Datatype,
+        name: Option<&str>,
+        extents: &Extents,
+    ) -> Result<Dataset> {
         // construct DAPL and DCPL, validate filters
         let dapl = self.build_dapl()?;
         let dcpl = self.build_dcpl(&dtype, extents)?;
@@ -915,7 +1039,7 @@ impl DatasetBuilderInner {
 
 macro_rules! impl_builder {
     ($plist:ident: $name:ident/$short:ident) => {
-        paste::paste! {
+        pastey::paste! {
             #[inline] #[must_use]
             pub fn [<set_ $name _plist>](mut self, $short: &$plist) -> Self {
                 self.builder.[<set_ $name _plist>]($short); self
@@ -963,7 +1087,7 @@ macro_rules! impl_builder {
         $(#[$meta:meta])*
         $plist:ident: $name:ident($($var:ident: $ty:ty),*)
     ) => {
-        paste::paste! {
+        pastey::paste! {
             $(#[$meta])*
             #[inline] #[must_use] #[doc =
                 "\u{21b3} [`" $plist "Builder::" $name "`]"
@@ -978,7 +1102,7 @@ macro_rules! impl_builder {
         $(#[$meta:meta])*
         $plist:ident: $name:ident<$($gid:ident: $gty:path),+>($($var:ident: $ty:ty),*)
     ) => {
-        paste::paste! {
+        pastey::paste! {
             $(#[$meta])*
             #[inline] #[must_use] #[doc =
                 "\u{21b3} [`" $plist "Builder::" $name "`]"

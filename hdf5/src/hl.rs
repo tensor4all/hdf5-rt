@@ -1,5 +1,6 @@
 pub mod attribute;
 pub mod chunks;
+pub mod committed_datatype;
 pub mod container;
 pub mod dataset;
 pub mod dataspace;
@@ -8,25 +9,32 @@ pub mod extents;
 pub mod file;
 pub mod filters;
 pub mod group;
+pub mod iteration;
 pub mod location;
 pub mod object;
 pub mod plist;
 pub mod references;
 pub mod selection;
 
+#[cfg(feature = "1.10.0")]
+pub use self::file::FreeSection;
+
 pub use self::{
     attribute::{
-        Attribute, AttributeBuilder, AttributeBuilderData, AttributeBuilderEmpty,
+        AttrInfo, Attribute, AttributeBuilder, AttributeBuilderData, AttributeBuilderEmpty,
         AttributeBuilderEmptyShape,
     },
+    committed_datatype::CommittedDatatype,
     container::{ByteReader, Container, Reader, Writer},
     dataset::{
         Dataset, DatasetBuilder, DatasetBuilderData, DatasetBuilderEmpty, DatasetBuilderEmptyShape,
+        DatasetType,
     },
     dataspace::Dataspace,
     datatype::{Conversion, Datatype},
     file::{File, FileBuilder, OpenMode},
-    group::{Group, LinkInfo, LinkType},
+    group::{Group, GroupBuilder, GroupInfo, GroupStorageType, LinkInfo, LinkType},
+    iteration::{IndexType, IterationCursor, IterationOrder},
     location::{Location, LocationInfo, LocationToken, LocationType},
     object::Object,
     plist::PropertyList,

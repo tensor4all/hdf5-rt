@@ -1,11 +1,15 @@
 #[macro_use]
 mod common;
 
+use hdf5::datatype::{ByteOrder, IntegerLayout, Padding};
 use hdf5::sys::h5::H5I_INVALID_HID;
+use hdf5::sys::h5t::{H5T_class_t, H5Tget_class};
 use hdf5::types::{TypeDescriptor as TD, *};
-use hdf5::{from_id, Datatype, H5Type};
+use hdf5::{from_id, Datatype, H5Type, MajorErrorCode, MinorErrorCode};
 use hdf5_rt as hdf5;
 use pretty_assertions::{assert_eq, assert_str_eq};
+
+use self::common::util::new_in_memory_file;
 
 macro_rules! check_roundtrip {
     ($ty:ty, $desc:expr) => {{
@@ -43,8 +47,160 @@ pub fn test_datatype_roundtrip_primitives() {
 // Note: test_datatype_roundtrip for custom enums/structs removed - requires hdf5_derive
 
 #[test]
+pub fn test_with_byte_order_numeric_types() -> hdf5::Result<()> {
+    let integer = Datatype::from_type::<i32>()?;
+    let float = Datatype::from_type::<f64>()?;
+
+    let little_integer = integer.with_byte_order(ByteOrder::LittleEndian)?;
+    let big_integer = integer.with_byte_order(ByteOrder::BigEndian)?;
+    let little_float = float.with_byte_order(ByteOrder::LittleEndian)?;
+    let big_float = float.with_byte_order(ByteOrder::BigEndian)?;
+
+    assert_eq!(little_integer.byte_order(), ByteOrder::LittleEndian);
+    assert_eq!(big_integer.byte_order(), ByteOrder::BigEndian);
+    assert_eq!(little_float.byte_order(), ByteOrder::LittleEndian);
+    assert_eq!(big_float.byte_order(), ByteOrder::BigEndian);
+
+    assert_eq!(little_integer.to_descriptor()?, integer.to_descriptor()?);
+    assert_eq!(big_integer.to_descriptor()?, integer.to_descriptor()?);
+    assert_eq!(little_float.to_descriptor()?, float.to_descriptor()?);
+    assert_eq!(big_float.to_descriptor()?, float.to_descriptor()?);
+    Ok(())
+}
+
+#[test]
+pub fn test_with_byte_order_preserves_original_and_clone() -> hdf5::Result<()> {
+    let original = Datatype::from_type::<u32>()?;
+    let alias = original.clone();
+    let original_order = original.byte_order();
+    let other_order = if original_order == ByteOrder::LittleEndian {
+        ByteOrder::BigEndian
+    } else {
+        ByteOrder::LittleEndian
+    };
+
+    let configured = alias.with_byte_order(other_order)?;
+    assert_eq!(configured.byte_order(), other_order);
+    assert_eq!(original.byte_order(), original_order);
+    assert_eq!(alias.byte_order(), original_order);
+
+    let error = alias.with_byte_order(ByteOrder::None).unwrap_err();
+    assert!(error.contains_major(MajorErrorCode::Datatype), "{error:?}");
+    assert!(error.contains_minor(MinorErrorCode::BadValue), "{error:?}");
+    assert_eq!(original.byte_order(), original_order);
+    assert_eq!(alias.byte_order(), original_order);
+    Ok(())
+}
+
+#[test]
+pub fn test_with_byte_order_committed_datatype() -> hdf5::Result<()> {
+    let file = new_in_memory_file()?;
+    let original = Datatype::from_type::<u32>()?.with_byte_order(ByteOrder::LittleEndian)?;
+    file.commit_datatype("little_endian", &original)?;
+    let committed = file.committed_datatype("little_endian")?;
+
+    let configured = committed.as_datatype().with_byte_order(ByteOrder::BigEndian)?;
+
+    assert!(!configured.is_committed());
+    assert_eq!(configured.byte_order(), ByteOrder::BigEndian);
+    assert!(committed.as_datatype().is_committed());
+    assert_eq!(committed.as_datatype().byte_order(), ByteOrder::LittleEndian);
+    Ok(())
+}
+
+#[test]
+pub fn test_opaque_datatype_class() -> hdf5::Result<()> {
+    let datatype = Datatype::opaque(16)?;
+
+    let class = hdf5::h5lock!(H5Tget_class(datatype.id()));
+
+    assert_eq!(class, H5T_class_t::H5T_OPAQUE);
+    Ok(())
+}
+
+#[test]
+pub fn test_opaque_datatype_rejects_zero_size() {
+    let error = Datatype::opaque(0).unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a size validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Opaque datatype size must be positive");
+}
+
+#[test]
+pub fn test_integer_layout_rejects_bits_beyond_storage() {
+    let error = IntegerLayout::builder()
+        .size(3)
+        .byte_order(ByteOrder::BigEndian)
+        .signed(false)
+        .bit_precision(20)
+        .bit_offset(5)
+        .build()
+        .unwrap_err();
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a layout validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Integer significant bits exceed the storage size");
+}
+
+#[test]
+pub fn test_with_integer_layout_does_not_modify_original() -> hdf5::Result<()> {
+    let original = Datatype::from_type::<i32>()?;
+    let alias = original.clone();
+    let original_layout = original.integer_layout()?;
+    let layout = original_layout.to_builder().signed(false).build()?;
+
+    let configured = alias.with_integer_layout(&layout)?;
+
+    assert!(!configured.integer_layout()?.signed());
+    assert_eq!(original.integer_layout()?, original_layout);
+    assert_eq!(alias.integer_layout()?, original_layout);
+    Ok(())
+}
+
+#[test]
+pub fn test_with_integer_layout_shrinks_storage() -> hdf5::Result<()> {
+    let original = Datatype::from_type::<u64>()?;
+    let layout = original.integer_layout()?.to_builder().size(3).bit_precision(24).build()?;
+
+    let configured = original.with_integer_layout(&layout)?;
+
+    assert_eq!(configured.integer_layout()?, layout);
+    Ok(())
+}
+
+#[test]
 pub fn test_invalid_datatype() {
     assert_err!(from_id::<Datatype>(H5I_INVALID_HID), "Invalid handle id");
+}
+
+#[test]
+pub fn test_committed_datatype_roundtrip() -> hdf5::Result<()> {
+    let compound = TD::Compound(CompoundType {
+        fields: vec![
+            CompoundField::typed::<i32>("a", 0, 0),
+            CompoundField::typed::<f64>("b", 8, 1),
+        ],
+        size: 16,
+    });
+    let enumeration = TD::Enum(EnumType {
+        size: IntSize::U1,
+        signed: false,
+        members: vec![
+            EnumMember { name: "red".to_owned(), value: 1 },
+            EnumMember { name: "green".to_owned(), value: 2 },
+        ],
+    });
+    let file = new_in_memory_file()?;
+    for (i, desc) in [compound, enumeration, TD::VarLenUnicode].iter().enumerate() {
+        let name = format!("t{i}");
+        file.commit_datatype(&name, &Datatype::from_descriptor(desc)?)?;
+        let committed = file.committed_datatype(&name)?;
+        assert!(committed.as_datatype().is_committed());
+        assert_eq!(committed.as_datatype().to_descriptor()?, *desc);
+    }
+    Ok(())
 }
 
 #[test]
