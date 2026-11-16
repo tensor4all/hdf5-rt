@@ -169,6 +169,8 @@ pub mod h5e {
         H5E_IO,
         H5E_LINK,
         H5E_LINKCOUNT,
+        H5E_LOGFAIL,
+        H5E_LOGGING,
         H5E_MOUNT,
         H5E_MPI,
         H5E_MPIERRSTR,

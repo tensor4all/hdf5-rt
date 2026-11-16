@@ -3,13 +3,22 @@
 ## hdf5-rt unreleased
 - Synced with upstream `metno/hdf5-rust` `main` at `2962c15` (hdf5 0.15.1 plus post-release
   fixes) while keeping the runtime-loading (dlopen) layer.
-- Ported the new upstream sys surface to `hdf5/src/sys`: attribute create property lists,
-  committed datatypes, integer layouts, `Datatype::opaque`, `File::free_sections`, anonymous
-  group creation, link phase change, integer pad/sign accessors, `H5Aget_create_plist` and
-  version-aware `H5O` info/token calls, plus the external storage offset ABI (`HDoff_t`).
-- Added `MajorErrorCode`/`MinorErrorCode` and `Error::contains_major`/`contains_minor`.
+- New upstream APIs that are not version-gated now compile in the runtime fork:
+  `CommittedDatatype` and `Group::commit_datatype`/`committed_datatype`/`committed_datatypes`,
+  `IntegerLayout`/`IntegerLayoutBuilder`/`Padding`, `Datatype::opaque`/`with_byte_order`/
+  `is_committed`, `MajorErrorCode`/`MinorErrorCode` with `Error::contains_major`/
+  `contains_minor`, attribute create property lists, `GroupCreate` and `Group::info`.
+- APIs upstream gates on HDF5 version features (`File::free_sections`/`FreeSection`,
+  the `LibraryVersion` variants above `Earliest`, `FileAccessBuilder::file_locking`, ...)
+  stay compiled out here, as on `main`, because this fork does not enable those features;
+  turning them on needs a runtime version gate and is left as follow-up.
+- Ported the new upstream sys surface to `hdf5/src/sys`: attribute create plists, committed
+  datatypes, integer layouts, anonymous group creation, link phase change, integer pad/sign
+  accessors, `H5Aget_create_plist`, version-aware `H5O` info/token calls, and the external
+  storage offset ABI (`HDoff_t`).
 - Runtime error classes follow the HDF5 renames (`H5E_ATOM` -> `H5E_ID`, `H5E_BADATOM` ->
-  `H5E_BADID`), so the loader also works with HDF5 2.x.
+  `H5E_BADID`) and the renamed logging code (`H5E_LOGFAIL` -> `H5E_LOGGING`), so the loader
+  also resolves error codes on HDF5 2.x.
 - Breaking: group iteration follows upstream 0.15 (`IndexType`, `IterationOrder`,
   `IterationCursor`); the `iter_visit`/`iter_visit_default` signatures changed.
 - Dev-dependencies moved to `rand` 0.10, and `paste` was replaced by `pastey` to match upstream.

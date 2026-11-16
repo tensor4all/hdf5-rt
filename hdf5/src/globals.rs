@@ -399,8 +399,7 @@ link_hid!(H5E_CANTDELETEFILE, h5e::H5E_CANTDELETEFILE);
 link_hid!(H5E_CANTGATHER, h5e::H5E_CANTGATHER);
 #[cfg(feature = "1.10.7")]
 link_hid!(H5E_INCONSISTENTSTATE, h5e::H5E_INCONSISTENTSTATE);
-#[cfg(feature = "1.10.5")]
-link_hid!(H5E_LOGGING, h5e::H5E_LOGGING);
+link_hid_versioned!(H5E_LOGGING, h5e::H5E_LOGFAIL, h5e::H5E_LOGGING, 1, 10, 5);
 #[cfg(feature = "1.10.2")]
 link_hid!(H5E_NO_INDEPENDENT, h5e::H5E_NO_INDEPENDENT);
 

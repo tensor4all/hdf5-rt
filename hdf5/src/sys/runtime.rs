@@ -2241,6 +2241,8 @@ define_native_type!(H5E_ALREADYEXISTS, "H5E_ALREADYEXISTS_g");
 define_native_type!(H5E_ALREADYINIT, "H5E_ALREADYINIT_g");
 define_native_type!(H5E_BADATOM, "H5E_BADATOM_g");
 define_native_type!(H5E_BADID, "H5E_BADID_g");
+define_native_type!(H5E_LOGFAIL, "H5E_LOGFAIL_g");
+define_native_type!(H5E_LOGGING, "H5E_LOGGING_g");
 define_native_type!(H5E_BADFILE, "H5E_BADFILE_g");
 define_native_type!(H5E_BADGROUP, "H5E_BADGROUP_g");
 define_native_type!(H5E_BADITER, "H5E_BADITER_g");
