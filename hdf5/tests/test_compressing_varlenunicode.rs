@@ -123,8 +123,10 @@ fn szip() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-#[cfg(feature = "zlib")]
 fn deflate() -> Result<(), Box<dyn std::error::Error>> {
+    if !hdf5::filters::deflate_available() {
+        return Ok(());
+    }
     let file = new_in_memory_file()?;
 
     let dset_name = "x";

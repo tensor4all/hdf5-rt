@@ -1,9 +1,11 @@
 #[macro_use]
 mod common;
 
-use hdf5::datatype::{ByteOrder, IntegerLayout, Padding};
+use hdf5::datatype::{
+    BitfieldLayout, ByteOrder, FloatLayout, IntegerLayout, Normalization, Padding, StringPadding,
+};
 use hdf5::sys::h5::H5I_INVALID_HID;
-use hdf5::sys::h5t::{H5T_class_t, H5Tget_class};
+use hdf5::sys::h5t::{H5T_class_t, H5Tget_class, H5Tset_fields, H5Tset_offset, H5Tset_precision};
 use hdf5::types::{TypeDescriptor as TD, *};
 use hdf5::{from_id, Datatype, H5Type, MajorErrorCode, MinorErrorCode};
 use hdf5_rt as hdf5;
@@ -171,6 +173,578 @@ pub fn test_with_integer_layout_shrinks_storage() -> hdf5::Result<()> {
 }
 
 #[test]
+pub fn test_bitfield_layout_rejects_bits_beyond_storage() {
+    let error = BitfieldLayout::builder()
+        .size(3)
+        .byte_order(ByteOrder::BigEndian)
+        .bit_precision(20)
+        .bit_offset(5)
+        .build()
+        .unwrap_err();
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a layout validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Bitfield significant bits exceed the storage size");
+}
+
+#[test]
+pub fn test_bitfield_layout_requires_bit_precision() {
+    let error =
+        BitfieldLayout::builder().size(2).byte_order(ByteOrder::LittleEndian).build().unwrap_err();
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a layout validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Bitfield bit precision is required");
+}
+
+#[test]
+pub fn test_bitfield_layout_rejects_integer_datatype() -> hdf5::Result<()> {
+    let integer = Datatype::from_type::<u16>()?;
+
+    let error = integer.bitfield_layout().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a datatype class error, got {error:?}");
+    };
+    assert_str_eq!(message, "Expected a bitfield datatype");
+    Ok(())
+}
+
+#[test]
+pub fn test_with_bitfield_layout_rejects_integer_datatype() -> hdf5::Result<()> {
+    let integer = Datatype::from_type::<u16>()?;
+    let layout = BitfieldLayout::builder()
+        .size(2)
+        .byte_order(ByteOrder::LittleEndian)
+        .bit_precision(16)
+        .build()?;
+
+    let error = integer.with_bitfield_layout(&layout).unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a datatype class error, got {error:?}");
+    };
+    assert_str_eq!(message, "Expected a bitfield datatype");
+    Ok(())
+}
+
+#[test]
+pub fn test_with_bitfield_layout_does_not_modify_original() -> hdf5::Result<()> {
+    let original_layout = BitfieldLayout::builder()
+        .size(2)
+        .byte_order(ByteOrder::LittleEndian)
+        .bit_precision(16)
+        .build()?;
+    let original = Datatype::from_bitfield_layout(&original_layout)?;
+    let alias = original.clone();
+    let layout = original_layout
+        .to_builder()
+        .byte_order(ByteOrder::BigEndian)
+        .high_padding(Padding::One)
+        .build()?;
+
+    let configured = alias.with_bitfield_layout(&layout)?;
+
+    assert_eq!(configured.bitfield_layout()?, layout);
+    assert_eq!(original.bitfield_layout()?, original_layout);
+    assert_eq!(alias.bitfield_layout()?, original_layout);
+    Ok(())
+}
+
+#[test]
+pub fn test_with_bitfield_layout_shrinks_storage() -> hdf5::Result<()> {
+    let wide = BitfieldLayout::builder()
+        .size(8)
+        .byte_order(ByteOrder::LittleEndian)
+        .bit_precision(64)
+        .build()?;
+    let original = Datatype::from_bitfield_layout(&wide)?;
+    let layout = wide.to_builder().size(3).bit_precision(24).build()?;
+
+    let configured = original.with_bitfield_layout(&layout)?;
+
+    assert_eq!(configured.bitfield_layout()?, layout);
+    Ok(())
+}
+
+#[test]
+pub fn test_with_bitfield_layout_rejects_none_byte_order() -> hdf5::Result<()> {
+    let original_layout = BitfieldLayout::builder()
+        .size(2)
+        .byte_order(ByteOrder::LittleEndian)
+        .bit_precision(16)
+        .build()?;
+    let original = Datatype::from_bitfield_layout(&original_layout)?;
+    let layout = original_layout.to_builder().byte_order(ByteOrder::None).build()?;
+
+    let error = original.with_bitfield_layout(&layout).unwrap_err();
+
+    assert!(error.contains_major(MajorErrorCode::Datatype), "{error:?}");
+    assert!(error.contains_minor(MinorErrorCode::BadValue), "{error:?}");
+    assert_eq!(original.bitfield_layout()?, original_layout);
+    Ok(())
+}
+
+#[test]
+pub fn test_with_bitfield_layout_committed_datatype() -> hdf5::Result<()> {
+    let file = new_in_memory_file()?;
+    let little_endian = BitfieldLayout::builder()
+        .size(2)
+        .byte_order(ByteOrder::LittleEndian)
+        .bit_precision(16)
+        .build()?;
+    file.commit_datatype("bitfield", &Datatype::from_bitfield_layout(&little_endian)?)?;
+    let committed = file.committed_datatype("bitfield")?;
+    let big_endian = little_endian.to_builder().byte_order(ByteOrder::BigEndian).build()?;
+
+    let configured = committed.as_datatype().with_bitfield_layout(&big_endian)?;
+
+    assert!(!configured.is_committed());
+    assert_eq!(configured.bitfield_layout()?, big_endian);
+    assert!(committed.as_datatype().is_committed());
+    assert_eq!(committed.as_datatype().bitfield_layout()?, little_endian);
+    Ok(())
+}
+
+#[test]
+pub fn test_bitfield_layout_rejects_offset_beyond_file_format() -> hdf5::Result<()> {
+    let layout = BitfieldLayout::builder()
+        .size(1)
+        .byte_order(ByteOrder::LittleEndian)
+        .bit_precision(8)
+        .build()?;
+    let datatype = Datatype::from_bitfield_layout(&layout)?;
+    hdf5::h5call!(H5Tset_offset(datatype.id(), 70_000))?;
+
+    let error = datatype.bitfield_layout().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a file format limit error, got {error:?}");
+    };
+    assert_str_eq!(message, "Bitfield bit offset exceeds the file format limit");
+    Ok(())
+}
+
+#[test]
+pub fn test_bitfield_layout_rejects_precision_beyond_file_format() -> hdf5::Result<()> {
+    let layout = BitfieldLayout::builder()
+        .size(1)
+        .byte_order(ByteOrder::LittleEndian)
+        .bit_precision(8)
+        .build()?;
+    let datatype = Datatype::from_bitfield_layout(&layout)?;
+    hdf5::h5call!(H5Tset_precision(datatype.id(), 70_000))?;
+
+    let error = datatype.bitfield_layout().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a file format limit error, got {error:?}");
+    };
+    assert_str_eq!(message, "Bitfield bit precision exceeds the file format limit");
+    Ok(())
+}
+
+#[test]
+pub fn test_integer_layout_rejects_offset_beyond_file_format() -> hdf5::Result<()> {
+    let datatype = Datatype::from_type::<u8>()?;
+    hdf5::h5call!(H5Tset_offset(datatype.id(), 70_000))?;
+
+    let error = datatype.integer_layout().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a file format limit error, got {error:?}");
+    };
+    assert_str_eq!(message, "Integer bit offset exceeds the file format limit");
+    Ok(())
+}
+
+#[test]
+pub fn test_integer_layout_rejects_precision_beyond_file_format() -> hdf5::Result<()> {
+    let datatype = Datatype::from_type::<u8>()?;
+    hdf5::h5call!(H5Tset_precision(datatype.id(), 70_000))?;
+
+    let error = datatype.integer_layout().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a file format limit error, got {error:?}");
+    };
+    assert_str_eq!(message, "Integer bit precision exceeds the file format limit");
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_rejects_bits_beyond_storage() -> hdf5::Result<()> {
+    let f32_layout = Datatype::from_type::<f32>()?.float_layout()?;
+
+    let error = f32_layout.to_builder().size(3).build().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a layout validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Float significant bits exceed the storage size");
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_requires_normalization() {
+    let error = FloatLayout::builder()
+        .size(2)
+        .byte_order(ByteOrder::LittleEndian)
+        .bit_precision(16)
+        .sign_position(15)
+        .exponent_position(10)
+        .exponent_size(5)
+        .mantissa_position(0)
+        .mantissa_size(10)
+        .exponent_bias(15)
+        .build()
+        .unwrap_err();
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a layout validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Float normalization is required");
+}
+
+#[test]
+pub fn test_float_layout_rejects_zero_exponent_size() -> hdf5::Result<()> {
+    let f32_layout = Datatype::from_type::<f32>()?.float_layout()?;
+
+    let error = f32_layout.to_builder().exponent_size(0).build().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a layout validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Float exponent size must be positive");
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_rejects_zero_mantissa_size() -> hdf5::Result<()> {
+    let f32_layout = Datatype::from_type::<f32>()?.float_layout()?;
+
+    let error = f32_layout.to_builder().mantissa_size(0).build().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a layout validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Float mantissa size must be positive");
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_rejects_sign_outside_significant_bits() -> hdf5::Result<()> {
+    let f32_layout = Datatype::from_type::<f32>()?.float_layout()?;
+
+    let error = f32_layout.to_builder().bit_precision(31).build().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a layout validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Float sign bit is outside the significant bits");
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_rejects_exponent_outside_significant_bits() -> hdf5::Result<()> {
+    let f32_layout = Datatype::from_type::<f32>()?.float_layout()?;
+
+    let error = f32_layout.to_builder().exponent_position(25).build().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a layout validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Float exponent field is outside the significant bits");
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_rejects_mantissa_outside_significant_bits() -> hdf5::Result<()> {
+    let f32_layout = Datatype::from_type::<f32>()?.float_layout()?;
+
+    let error = f32_layout.to_builder().mantissa_position(10).build().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a layout validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Float mantissa field is outside the significant bits");
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_rejects_sign_in_exponent() -> hdf5::Result<()> {
+    let f32_layout = Datatype::from_type::<f32>()?.float_layout()?;
+
+    let error = f32_layout.to_builder().sign_position(23).build().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a layout validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Float sign bit overlaps the exponent field");
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_rejects_sign_in_mantissa() -> hdf5::Result<()> {
+    let f32_layout = Datatype::from_type::<f32>()?.float_layout()?;
+
+    let error = f32_layout.to_builder().sign_position(0).build().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a layout validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Float sign bit overlaps the mantissa field");
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_rejects_overlapping_exponent_and_mantissa() -> hdf5::Result<()> {
+    let f32_layout = Datatype::from_type::<f32>()?.float_layout()?;
+
+    let error = f32_layout.to_builder().mantissa_size(24).build().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a layout validation error, got {error:?}");
+    };
+    assert_str_eq!(message, "Float exponent and mantissa fields overlap");
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_of_f32() -> hdf5::Result<()> {
+    let byte_order =
+        if cfg!(target_endian = "little") { ByteOrder::LittleEndian } else { ByteOrder::BigEndian };
+    let expected = FloatLayout::builder()
+        .size(4)
+        .byte_order(byte_order)
+        .bit_precision(32)
+        .sign_position(31)
+        .exponent_position(23)
+        .exponent_size(8)
+        .mantissa_position(0)
+        .mantissa_size(23)
+        .exponent_bias(127)
+        .normalization(Normalization::Implied)
+        .build()?;
+
+    let layout = Datatype::from_type::<f32>()?.float_layout()?;
+
+    assert_eq!(layout, expected);
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_of_f64() -> hdf5::Result<()> {
+    let byte_order =
+        if cfg!(target_endian = "little") { ByteOrder::LittleEndian } else { ByteOrder::BigEndian };
+    let expected = FloatLayout::builder()
+        .size(8)
+        .byte_order(byte_order)
+        .bit_precision(64)
+        .sign_position(63)
+        .exponent_position(52)
+        .exponent_size(11)
+        .mantissa_position(0)
+        .mantissa_size(52)
+        .exponent_bias(1023)
+        .normalization(Normalization::Implied)
+        .build()?;
+
+    let layout = Datatype::from_type::<f64>()?.float_layout()?;
+
+    assert_eq!(layout, expected);
+    Ok(())
+}
+
+#[test]
+pub fn test_vax_f32_layout() -> hdf5::Result<()> {
+    let byte_order = ByteOrder::Vax;
+    let expected = FloatLayout::builder()
+        .size(4)
+        .byte_order(byte_order)
+        .bit_precision(32)
+        .sign_position(31)
+        .exponent_position(23)
+        .exponent_size(8)
+        .mantissa_position(0)
+        .mantissa_size(23)
+        .exponent_bias(129)
+        .normalization(Normalization::Implied)
+        .build()?;
+
+    let layout = Datatype::vax_f32()?.float_layout()?;
+
+    assert_eq!(layout, expected);
+    Ok(())
+}
+
+#[test]
+pub fn test_vax_f64_layout() -> hdf5::Result<()> {
+    let byte_order = ByteOrder::Vax;
+    let expected = FloatLayout::builder()
+        .size(8)
+        .byte_order(byte_order)
+        .bit_precision(64)
+        .sign_position(63)
+        .exponent_position(52)
+        .exponent_size(11)
+        .mantissa_position(0)
+        .mantissa_size(52)
+        .exponent_bias(1025)
+        .normalization(Normalization::Implied)
+        .build()?;
+
+    let layout = Datatype::vax_f64()?.float_layout()?;
+
+    assert_eq!(layout, expected);
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_rejects_integer_datatype() -> hdf5::Result<()> {
+    let integer = Datatype::from_type::<u32>()?;
+
+    let error = integer.float_layout().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a datatype class error, got {error:?}");
+    };
+    assert_str_eq!(message, "Expected a floating-point datatype");
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_rejects_exponent_position_beyond_file_format() -> hdf5::Result<()> {
+    let datatype = Datatype::from_type::<f32>()?;
+    hdf5::h5call!(H5Tset_precision(datatype.id(), 320))?;
+    hdf5::h5call!(H5Tset_fields(datatype.id(), 31, 300, 8, 0, 23))?;
+
+    let error = datatype.float_layout().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a file format limit error, got {error:?}");
+    };
+    assert_str_eq!(message, "Float exponent position exceeds the file format limit");
+    Ok(())
+}
+
+#[test]
+pub fn test_with_float_layout_rejects_integer_datatype() -> hdf5::Result<()> {
+    let integer = Datatype::from_type::<u32>()?;
+    let layout = Datatype::from_type::<f32>()?.float_layout()?;
+
+    let error = integer.with_float_layout(&layout).unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a datatype class error, got {error:?}");
+    };
+    assert_str_eq!(message, "Expected a floating-point datatype");
+    Ok(())
+}
+
+#[test]
+pub fn test_with_float_layout_does_not_modify_original() -> hdf5::Result<()> {
+    let original = Datatype::from_type::<f32>()?;
+    let alias = original.clone();
+    let original_layout = original.float_layout()?;
+    let layout = original_layout.to_builder().exponent_bias(126).build()?;
+
+    let configured = alias.with_float_layout(&layout)?;
+
+    assert_eq!(configured.float_layout()?, layout);
+    assert_eq!(original.float_layout()?, original_layout);
+    assert_eq!(alias.float_layout()?, original_layout);
+    Ok(())
+}
+
+#[test]
+pub fn test_with_float_layout_shrinks_storage() -> hdf5::Result<()> {
+    let original = Datatype::from_type::<f64>()?;
+    let half = FloatLayout::builder()
+        .size(2)
+        .byte_order(ByteOrder::BigEndian)
+        .bit_precision(16)
+        .sign_position(15)
+        .exponent_position(10)
+        .exponent_size(5)
+        .mantissa_position(0)
+        .mantissa_size(10)
+        .exponent_bias(15)
+        .normalization(Normalization::Implied)
+        .build()?;
+
+    let configured = original.with_float_layout(&half)?;
+
+    assert_eq!(configured.float_layout()?, half);
+    Ok(())
+}
+
+#[test]
+pub fn test_with_float_layout_grows_storage_with_offset() -> hdf5::Result<()> {
+    let original = Datatype::from_type::<f32>()?;
+    let layout = original
+        .float_layout()?
+        .to_builder()
+        .size(5)
+        .bit_offset(4)
+        .sign_position(31)
+        .exponent_position(23)
+        .mantissa_position(0)
+        .low_padding(Padding::One)
+        .internal_padding(Padding::One)
+        .normalization(Normalization::MsbSet)
+        .build()?;
+
+    let configured = original.with_float_layout(&layout)?;
+
+    assert_eq!(configured.float_layout()?, layout);
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_field_positions_are_relative_to_the_significant_region() -> hdf5::Result<()>
+{
+    let original = Datatype::from_type::<f32>()?;
+    // HDF5 numbers field positions from the start of the significant region, so the
+    // standard f32 positions (31/23/0) stay valid when the region starts at bit 4.
+    // An absolute reading would reject the mantissa at position 0.
+    let layout = original.float_layout()?.to_builder().size(5).bit_offset(4).build()?;
+    let configured = original.with_float_layout(&layout)?;
+    assert_eq!(configured.float_layout()?, layout);
+    Ok(())
+}
+
+#[test]
+pub fn test_with_float_layout_rejects_none_byte_order() -> hdf5::Result<()> {
+    let original = Datatype::from_type::<f32>()?;
+    let original_layout = original.float_layout()?;
+    let layout = original_layout.to_builder().byte_order(ByteOrder::None).build()?;
+
+    let error = original.with_float_layout(&layout).unwrap_err();
+
+    assert!(error.contains_major(MajorErrorCode::Datatype), "{error:?}");
+    assert!(error.contains_minor(MinorErrorCode::BadValue), "{error:?}");
+    assert_eq!(original.float_layout()?, original_layout);
+    Ok(())
+}
+
+#[test]
+pub fn test_with_float_layout_committed_datatype() -> hdf5::Result<()> {
+    let file = new_in_memory_file()?;
+    file.commit_datatype("float", &Datatype::from_type::<f32>()?)?;
+    let committed = file.committed_datatype("float")?;
+    let original_layout = committed.as_datatype().float_layout()?;
+    let layout = original_layout.to_builder().exponent_bias(126).build()?;
+
+    let configured = committed.as_datatype().with_float_layout(&layout)?;
+
+    assert!(!configured.is_committed());
+    assert_eq!(configured.float_layout()?, layout);
+    assert!(committed.as_datatype().is_committed());
+    assert_eq!(committed.as_datatype().float_layout()?, original_layout);
+    Ok(())
+}
+
+#[test]
 pub fn test_invalid_datatype() {
     assert_err!(from_id::<Datatype>(H5I_INVALID_HID), "Invalid handle id");
 }
@@ -252,4 +826,93 @@ fn test_print_display_debug_datatype_fixed_len_unicode() {
     assert_str_eq!(format!("{dt}"), "unicode (len 10)");
     assert_str_eq!(format!("{dt:?}"), "<HDF5 datatype: unicode (len 10)>");
     assert_str_eq!(format!("{dt:#?}"), "<HDF5 datatype: unicode (len 10)>");
+}
+
+#[test]
+pub fn test_string_padding_fixed_ascii() -> hdf5::Result<()> {
+    let datatype = Datatype::from_type::<FixedAscii<8>>()?;
+
+    assert_eq!(datatype.string_padding()?, StringPadding::NullPadded);
+    Ok(())
+}
+
+#[test]
+pub fn test_string_padding_varlen_unicode() -> hdf5::Result<()> {
+    let datatype = Datatype::from_type::<VarLenUnicode>()?;
+
+    assert_eq!(datatype.string_padding()?, StringPadding::NullTerminated);
+    Ok(())
+}
+
+#[test]
+pub fn test_string_padding_rejects_integer_datatype() -> hdf5::Result<()> {
+    let integer = Datatype::from_type::<u16>()?;
+
+    let error = integer.string_padding().unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a datatype class error, got {error:?}");
+    };
+    assert_str_eq!(message, "Expected a string datatype");
+    Ok(())
+}
+
+#[test]
+pub fn test_with_string_padding_fixed_ascii() -> hdf5::Result<()> {
+    let original = Datatype::from_type::<FixedAscii<8>>()?;
+
+    let configured = original.with_string_padding(StringPadding::SpacePadded)?;
+
+    assert_eq!(configured.string_padding()?, StringPadding::SpacePadded);
+    Ok(())
+}
+
+#[test]
+pub fn test_with_string_padding_varlen_unicode() -> hdf5::Result<()> {
+    let original = Datatype::from_type::<VarLenUnicode>()?;
+
+    let configured = original.with_string_padding(StringPadding::NullPadded)?;
+
+    assert_eq!(configured.string_padding()?, StringPadding::NullPadded);
+    Ok(())
+}
+
+#[test]
+pub fn test_with_string_padding_does_not_modify_original() -> hdf5::Result<()> {
+    let original = Datatype::from_type::<FixedAscii<8>>()?;
+
+    let configured = original.with_string_padding(StringPadding::SpacePadded)?;
+
+    assert_eq!(original.string_padding()?, StringPadding::NullPadded);
+    assert_eq!(configured.to_descriptor()?, TD::FixedAscii(8));
+    Ok(())
+}
+
+#[test]
+pub fn test_with_string_padding_rejects_integer_datatype() -> hdf5::Result<()> {
+    let integer = Datatype::from_type::<u16>()?;
+
+    let error = integer.with_string_padding(StringPadding::SpacePadded).unwrap_err();
+
+    let hdf5::Error::Internal(message) = error else {
+        panic!("Expected a datatype class error, got {error:?}");
+    };
+    assert_str_eq!(message, "Expected a string datatype");
+    Ok(())
+}
+
+#[test]
+pub fn test_with_string_padding_committed_datatype() -> hdf5::Result<()> {
+    let file = new_in_memory_file()?;
+    let original = Datatype::from_type::<FixedAscii<8>>()?;
+    file.commit_datatype("text", &original)?;
+    let committed = file.committed_datatype("text")?;
+
+    let configured = committed.as_datatype().with_string_padding(StringPadding::SpacePadded)?;
+
+    assert!(!configured.is_committed());
+    assert_eq!(configured.string_padding()?, StringPadding::SpacePadded);
+    assert!(committed.as_datatype().is_committed());
+    assert_eq!(committed.as_datatype().string_padding()?, StringPadding::NullPadded);
+    Ok(())
 }

@@ -1,6 +1,12 @@
 # Changelog
 
 ## hdf5-rt unreleased
+- Synced with upstream `metno/hdf5-rust` `main` at `0dcd41b`: `BitfieldLayout`,
+  `FloatLayout`/`Normalization`, `StringPadding`, and the integer layout widths narrowed to
+  the HDF5 file-format widths (`size: u32`, `bit_offset`/`bit_precision: u16`).
+- A committed datatype from another file is accepted by the dataset and attribute builders:
+  the runtime loader requires HDF5 1.10.4, where the library stores a copy of the type instead
+  of writing a reference the file cannot resolve.
 - Synced with upstream `metno/hdf5-rust` `main` at `2962c15` (hdf5 0.15.1 plus post-release
   fixes) while keeping the runtime-loading (dlopen) layer.
 - New upstream APIs that are not version-gated now compile in the runtime fork:
@@ -28,6 +34,9 @@
 ## hdf5 unreleased
 - Fixed external dataset storage when HDF5 uses a different file-offset width from Rust's libc
 - Recognized HDF5 1.10.11 and 1.12.3 version features
+- Added `StringPadding` with `Datatype::string_padding` and `with_string_padding` for string datatypes
+- Added `FloatLayout` and `Normalization` with `Datatype::float_layout`, `from_float_layout`, `with_float_layout`, `vax_f32`, and `vax_f64` for floating-point datatypes
+- Added `BitfieldLayout` with `Datatype::bitfield_layout`, `from_bitfield_layout`, and `with_bitfield_layout` for bitfield datatypes
 - Added `Datatype::opaque` to construct an opaque datatype with a specified size
 - Added `IntegerLayout`, `IntegerLayoutBuilder`, and `Padding` with `Datatype::integer_layout`, `from_integer_layout`, and `with_integer_layout` for integer storage representation inspection and configuration
 - Added `Datatype::with_byte_order` to return a copy with the requested byte order

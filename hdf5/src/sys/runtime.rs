@@ -245,6 +245,15 @@ pub enum H5T_str_t {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum H5T_norm_t {
+    H5T_NORM_ERROR = -1,
+    H5T_NORM_IMPLIED = 0,
+    H5T_NORM_MSBSET = 1,
+    H5T_NORM_NONE = 2,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum H5T_cmd_t {
     H5T_CONV_INIT = 0,
     H5T_CONV_CONV = 1,
@@ -1304,6 +1313,20 @@ hdf5_function!(H5Tget_order, fn(type_id: hid_t) -> H5T_order_t);
 hdf5_function!(H5Tget_sign, fn(type_id: hid_t) -> H5T_sign_t);
 hdf5_function!(H5Tget_precision, fn(type_id: hid_t) -> size_t);
 hdf5_function!(H5Tget_offset, fn(type_id: hid_t) -> c_int);
+hdf5_function!(
+    H5Tget_fields,
+    fn(
+        type_id: hid_t,
+        spos: *mut size_t,
+        epos: *mut size_t,
+        esize: *mut size_t,
+        mpos: *mut size_t,
+        msize: *mut size_t,
+    ) -> herr_t
+);
+hdf5_function!(H5Tget_ebias, fn(type_id: hid_t) -> size_t);
+hdf5_function!(H5Tget_norm, fn(type_id: hid_t) -> H5T_norm_t);
+hdf5_function!(H5Tget_inpad, fn(type_id: hid_t) -> H5T_pad_t);
 hdf5_function!(H5Tget_nmembers, fn(type_id: hid_t) -> c_int);
 hdf5_function!(H5Tget_member_name, fn(type_id: hid_t, membno: c_uint) -> *mut c_char);
 hdf5_function!(H5Tget_member_offset, fn(type_id: hid_t, membno: c_uint) -> size_t);
@@ -1324,6 +1347,8 @@ hdf5_function!(H5Tset_offset, fn(type_id: hid_t, offset: size_t) -> herr_t);
 hdf5_function!(H5Tset_cset, fn(type_id: hid_t, cset: H5T_cset_t) -> herr_t);
 hdf5_function!(H5Tset_strpad, fn(type_id: hid_t, strpad: H5T_str_t) -> herr_t);
 hdf5_function!(H5Tset_ebias, fn(type_id: hid_t, ebias: size_t) -> herr_t);
+hdf5_function!(H5Tset_norm, fn(type_id: hid_t, norm: H5T_norm_t) -> herr_t);
+hdf5_function!(H5Tset_inpad, fn(type_id: hid_t, inpad: H5T_pad_t) -> herr_t);
 hdf5_function!(
     H5Tset_fields,
     fn(
