@@ -686,9 +686,9 @@ pub fn test_with_float_layout_grows_storage_with_offset() -> hdf5::Result<()> {
         .to_builder()
         .size(5)
         .bit_offset(4)
-        .sign_position(35)
-        .exponent_position(27)
-        .mantissa_position(4)
+        .sign_position(31)
+        .exponent_position(23)
+        .mantissa_position(0)
         .low_padding(Padding::One)
         .internal_padding(Padding::One)
         .normalization(Normalization::MsbSet)
@@ -696,6 +696,19 @@ pub fn test_with_float_layout_grows_storage_with_offset() -> hdf5::Result<()> {
 
     let configured = original.with_float_layout(&layout)?;
 
+    assert_eq!(configured.float_layout()?, layout);
+    Ok(())
+}
+
+#[test]
+pub fn test_float_layout_field_positions_are_relative_to_the_significant_region() -> hdf5::Result<()>
+{
+    let original = Datatype::from_type::<f32>()?;
+    // HDF5 numbers field positions from the start of the significant region, so the
+    // standard f32 positions (31/23/0) stay valid when the region starts at bit 4.
+    // An absolute reading would reject the mantissa at position 0.
+    let layout = original.float_layout()?.to_builder().size(5).bit_offset(4).build()?;
+    let configured = original.with_float_layout(&layout)?;
     assert_eq!(configured.float_layout()?, layout);
     Ok(())
 }

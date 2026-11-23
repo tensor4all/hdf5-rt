@@ -46,8 +46,9 @@ impl TryFrom<H5T_norm_t> for Normalization {
 /// The storage representation of a floating-point datatype.
 ///
 /// Storage size is measured in bytes. Precision, offset, and field positions and
-/// sizes are measured in bits. Field positions count from the least significant
-/// bit of the storage, not from the start of the significant-bit range.
+/// sizes are measured in bits. Field positions are relative to the significant-bit
+/// range (its least significant bit is position 0), as in `H5Tget_fields` /
+/// `H5Tset_fields`, not absolute bit positions in the storage.
 ///
 /// The significant-bit range fits within the storage size, and the sign, exponent,
 /// and mantissa fields fit within the significant-bit range without overlapping.
@@ -365,21 +366,15 @@ impl FloatLayoutBuilder {
             "Float significant bits exceed the storage size"
         );
 
-        let significant = start..end;
+        let precision = u32::from(bit_precision);
         let sign = u32::from(sign_position);
         let exponent =
             u32::from(exponent_position)..u32::from(exponent_position) + u32::from(exponent_size);
         let mantissa =
             u32::from(mantissa_position)..u32::from(mantissa_position) + u32::from(mantissa_size);
-        ensure!(significant.contains(&sign), "Float sign bit is outside the significant bits");
-        ensure!(
-            start <= exponent.start && exponent.end <= end,
-            "Float exponent field is outside the significant bits"
-        );
-        ensure!(
-            start <= mantissa.start && mantissa.end <= end,
-            "Float mantissa field is outside the significant bits"
-        );
+        ensure!(sign < precision, "Float sign bit is outside the significant bits");
+        ensure!(exponent.end <= precision, "Float exponent field is outside the significant bits");
+        ensure!(mantissa.end <= precision, "Float mantissa field is outside the significant bits");
         ensure!(!exponent.contains(&sign), "Float sign bit overlaps the exponent field");
         ensure!(!mantissa.contains(&sign), "Float sign bit overlaps the mantissa field");
         ensure!(
