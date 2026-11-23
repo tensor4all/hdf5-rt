@@ -317,24 +317,6 @@ impl AttributeBuilderInner {
         self.packed = packed;
     }
 
-    /// Rejects a committed datatype that lives in another file than the attribute.
-    fn ensure_same_file(&self, dtype: &Datatype) -> Result<()> {
-        use crate::hl::location::H5O_get_info;
-
-        if !dtype.is_committed() {
-            return Ok(());
-        }
-        let parent = try_ref_clone!(self.parent);
-        let parent_file = H5O_get_info(parent.id(), false)?.fileno;
-        let dtype_file = H5O_get_info(dtype.id(), false)?.fileno;
-        ensure!(
-            parent_file == dtype_file,
-            "committed datatype is in a different file than the attribute, which this HDF5 \
-             version cannot store"
-        );
-        Ok(())
-    }
-
     unsafe fn create(
         &self,
         dtype: &DatasetType,
@@ -349,9 +331,6 @@ impl AttributeBuilderInner {
             }
             DatasetType::Datatype(dtype) => {
                 ensure!(!self.packed, "packed layout cannot be applied to an existing datatype");
-                if !crate::hl::stores_cross_file_copy() {
-                    self.ensure_same_file(dtype)?;
-                }
                 dtype.clone()
             }
         };

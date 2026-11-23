@@ -291,8 +291,9 @@ impl DatasetBuilder {
 /// [`packed`](DatasetBuilder::packed) says. An existing datatype is passed to `H5Dcreate2`
 /// as is, so `packed` is rejected for it. With a committed datatype from the same file the
 /// dataset stores a reference to the committed type instead of a copy of it. A committed
-/// datatype from another file is stored as a copy from HDF5 1.8.18 and 1.10.1 on, and is
-/// rejected on older libraries, which would write a reference the file cannot resolve.
+/// datatype from another file is stored as a copy: the runtime loader requires HDF5 1.10.4
+/// or later, and libraries from 1.8.18 on (except 1.10.0) write the copy instead of a
+/// reference the file cannot resolve.
 #[derive(Clone, Debug)]
 pub enum DatasetType {
     /// A descriptor, turned into a transient datatype when the dataset is created.
@@ -629,35 +630,10 @@ impl DatasetBuilderInner {
             }
             DatasetType::Datatype(dtype) => {
                 ensure!(!self.packed, "packed layout cannot be applied to an existing datatype");
-                if !crate::hl::stores_cross_file_copy() {
-                    self.ensure_same_file(dtype)?;
-                }
                 dtype.clone()
             }
         };
         self.create_dataset(&dtype, name, extents)
-    }
-
-    /// Rejects a committed datatype that lives in another file than the dataset.
-    ///
-    /// Libraries before 1.8.18, and 1.10.0, write such a dataset with a reference into
-    /// the other file, and the dataset cannot be opened again. Later libraries store a
-    /// copy of the type instead, so they need no check.
-    fn ensure_same_file(&self, dtype: &Datatype) -> Result<()> {
-        use crate::hl::location::H5O_get_info;
-
-        if !dtype.is_committed() {
-            return Ok(());
-        }
-        let parent = try_ref_clone!(self.parent);
-        let parent_file = H5O_get_info(parent.id(), false)?.fileno;
-        let dtype_file = H5O_get_info(dtype.id(), false)?.fileno;
-        ensure!(
-            parent_file == dtype_file,
-            "committed datatype is in a different file than the dataset, which this HDF5 \
-             version cannot store"
-        );
-        Ok(())
     }
 
     /// Creates the dataset with `dtype`, the property lists and the dataspace.

@@ -19,17 +19,6 @@ pub mod selection;
 #[cfg(feature = "1.10.0")]
 pub use self::file::FreeSection;
 
-/// True when the loaded HDF5 library stores a copy of a committed datatype that comes from
-/// another file instead of writing a reference into that file.
-///
-/// The fork has no compile-time version features, so the upstream `#[cfg(feature = "1.10.1")]`
-/// gates become this runtime query (HDF5 1.8.18 up to 1.10.0 excluded, and 1.10.0 itself).
-pub(crate) fn stores_cross_file_copy() -> bool {
-    crate::sys::hdf5_version_at_least(1, 10, 1)
-        || (crate::sys::hdf5_version_at_least(1, 8, 18)
-            && !crate::sys::hdf5_version_at_least(1, 10, 0))
-}
-
 pub use self::{
     attribute::{
         AttrInfo, Attribute, AttributeBuilder, AttributeBuilderData, AttributeBuilderEmpty,

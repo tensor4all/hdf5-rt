@@ -501,10 +501,10 @@ unsafe impl H5Type for Point {
     fn type_descriptor() -> TypeDescriptor {
         TypeDescriptor::Compound(CompoundType {
             fields: vec![
-                CompoundField::typed::<f64>("x", 0, 0),
-                CompoundField::typed::<i32>("tag", 8, 1),
+                CompoundField::typed::<f64>("x", std::mem::offset_of!(Point, x), 0),
+                CompoundField::typed::<i32>("tag", std::mem::offset_of!(Point, tag), 1),
             ],
-            size: 16,
+            size: std::mem::size_of::<Point>(),
         })
     }
 }
@@ -553,20 +553,9 @@ fn test_empty_as_datatype_reuses_dataset_type() -> hdf5::Result<()> {
     Ok(())
 }
 
-/// True when the loaded HDF5 library stores a copy of a committed datatype from another
-/// file instead of writing a reference into that file.
-fn stores_cross_file_copy() -> bool {
-    let (major, minor, micro) = hdf5::library_version();
-    let version = (major, minor, micro);
-    version >= (1, 10, 1) || (version >= (1, 8, 18) && version < (1, 10, 0))
-}
-
 // A committed datatype from another file is stored as a copy from 1.8.18 and 1.10.1 on.
 #[test]
 fn test_empty_as_datatype_from_other_file_stores_copy() -> hdf5::Result<()> {
-    if !stores_cross_file_copy() {
-        return Ok(());
-    }
     let origin = new_in_memory_file()?;
     let dtype = hdf5::Datatype::from_type::<Point>()?;
     origin.commit_datatype("point", &dtype)?;
@@ -580,24 +569,6 @@ fn test_empty_as_datatype_from_other_file_stores_copy() -> hdf5::Result<()> {
 }
 
 // Older libraries would write a reference into the other file, so the crate rejects it.
-#[test]
-fn test_empty_as_datatype_from_other_file_is_rejected() -> hdf5::Result<()> {
-    if stores_cross_file_copy() {
-        return Ok(());
-    }
-    let origin = new_in_memory_file()?;
-    let dtype = hdf5::Datatype::from_type::<Point>()?;
-    origin.commit_datatype("point", &dtype)?;
-
-    let file = new_in_memory_file()?;
-    let err = file.new_dataset_builder().empty_as(&dtype).create("copy");
-    assert!(matches!(err, Err(hdf5::Error::Internal(_))));
-    assert!(file.dataset("copy").is_err());
-    let same_file = origin.new_dataset_builder().empty_as(&dtype).create("ok")?;
-    assert!(same_file.dtype()?.is_committed());
-    Ok(())
-}
-
 #[test]
 fn test_empty_as_datatype_outlives_unlinked_type() -> hdf5::Result<()> {
     let file = new_in_memory_file()?;
