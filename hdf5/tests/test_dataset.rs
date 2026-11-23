@@ -568,7 +568,18 @@ fn test_empty_as_datatype_from_other_file_stores_copy() -> hdf5::Result<()> {
     Ok(())
 }
 
-// Older libraries would write a reference into the other file, so the crate rejects it.
+#[test]
+fn test_attribute_cross_file_committed_datatype_stores_copy() -> hdf5::Result<()> {
+    let origin = new_in_memory_file()?;
+    let dtype = hdf5::Datatype::from_type::<u32>()?;
+    origin.commit_datatype("uint", &dtype)?;
+
+    let file = new_in_memory_file()?;
+    file.new_attr_builder().with_data_as(&[7_u32, 9], &dtype).create("values")?;
+    assert_eq!(file.attr("values")?.read_raw::<u32>()?, vec![7, 9]);
+    Ok(())
+}
+
 #[test]
 fn test_empty_as_datatype_outlives_unlinked_type() -> hdf5::Result<()> {
     let file = new_in_memory_file()?;
