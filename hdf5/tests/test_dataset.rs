@@ -570,13 +570,22 @@ fn test_empty_as_datatype_from_other_file_stores_copy() -> hdf5::Result<()> {
 
 #[test]
 fn test_attribute_cross_file_committed_datatype_stores_copy() -> hdf5::Result<()> {
-    let origin = new_in_memory_file()?;
-    let dtype = hdf5::Datatype::from_type::<u32>()?;
-    origin.commit_datatype("uint", &dtype)?;
+    let dir = tempdir().unwrap();
+    let origin_path = dir.path().join("origin.h5");
+    let target_path = dir.path().join("target.h5");
+    {
+        let origin = hdf5::File::create(&origin_path)?;
+        let dtype = hdf5::Datatype::from_type::<u32>()?;
+        origin.commit_datatype("uint", &dtype)?;
+        let committed = origin.committed_datatype("uint")?;
 
-    let file = new_in_memory_file()?;
-    file.new_attr_builder().with_data_as(&[7_u32, 9], &dtype).create("values")?;
-    assert_eq!(file.attr("values")?.read_raw::<u32>()?, vec![7, 9]);
+        let target = hdf5::File::create(&target_path)?;
+        target.new_attr_builder().with_data_as(&[7_u32, 9], &committed).create("values")?;
+    }
+
+    // Both handles are closed, so an unresolvable reference into the origin file would fail here.
+    let target = hdf5::File::open(&target_path)?;
+    assert_eq!(target.attr("values")?.read_raw::<u32>()?, vec![7, 9]);
     Ok(())
 }
 

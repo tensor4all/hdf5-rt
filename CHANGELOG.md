@@ -4,9 +4,9 @@
 - Synced with upstream `metno/hdf5-rust` `main` at `0dcd41b`: `BitfieldLayout`,
   `FloatLayout`/`Normalization`, `StringPadding`, and the integer layout widths narrowed to
   the HDF5 file-format widths (`size: u32`, `bit_offset`/`bit_precision: u16`).
-- A committed datatype from another file is accepted by the dataset and attribute builders
-  again: the runtime loader requires HDF5 1.10.4, where the library stores a copy of the type
-  instead of writing a reference the file cannot resolve.
+- A committed datatype from another file is accepted by the dataset and attribute builders:
+  the runtime loader requires HDF5 1.10.4, where the library stores a copy of the type instead
+  of writing a reference the file cannot resolve.
 - Synced with upstream `metno/hdf5-rust` `main` at `2962c15` (hdf5 0.15.1 plus post-release
   fixes) while keeping the runtime-loading (dlopen) layer.
 - New upstream APIs that are not version-gated now compile in the runtime fork:
