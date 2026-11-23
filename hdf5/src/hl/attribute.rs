@@ -318,7 +318,6 @@ impl AttributeBuilderInner {
     }
 
     /// Rejects a committed datatype that lives in another file than the attribute.
-    #[cfg(not(any(all(feature = "1.8.18", not(feature = "1.10.0")), feature = "1.10.1")))]
     fn ensure_same_file(&self, dtype: &Datatype) -> Result<()> {
         use crate::hl::location::H5O_get_info;
 
@@ -350,11 +349,9 @@ impl AttributeBuilderInner {
             }
             DatasetType::Datatype(dtype) => {
                 ensure!(!self.packed, "packed layout cannot be applied to an existing datatype");
-                #[cfg(not(any(
-                    all(feature = "1.8.18", not(feature = "1.10.0")),
-                    feature = "1.10.1"
-                )))]
-                self.ensure_same_file(dtype)?;
+                if !crate::hl::stores_cross_file_copy() {
+                    self.ensure_same_file(dtype)?;
+                }
                 dtype.clone()
             }
         };

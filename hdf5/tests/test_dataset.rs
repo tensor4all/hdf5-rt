@@ -553,10 +553,20 @@ fn test_empty_as_datatype_reuses_dataset_type() -> hdf5::Result<()> {
     Ok(())
 }
 
+/// True when the loaded HDF5 library stores a copy of a committed datatype from another
+/// file instead of writing a reference into that file.
+fn stores_cross_file_copy() -> bool {
+    let (major, minor, micro) = hdf5::library_version();
+    let version = (major, minor, micro);
+    version >= (1, 10, 1) || (version >= (1, 8, 18) && version < (1, 10, 0))
+}
+
 // A committed datatype from another file is stored as a copy from 1.8.18 and 1.10.1 on.
 #[test]
-#[cfg(any(all(feature = "1.8.18", not(feature = "1.10.0")), feature = "1.10.1"))]
 fn test_empty_as_datatype_from_other_file_stores_copy() -> hdf5::Result<()> {
+    if !stores_cross_file_copy() {
+        return Ok(());
+    }
     let origin = new_in_memory_file()?;
     let dtype = hdf5::Datatype::from_type::<Point>()?;
     origin.commit_datatype("point", &dtype)?;
@@ -571,8 +581,10 @@ fn test_empty_as_datatype_from_other_file_stores_copy() -> hdf5::Result<()> {
 
 // Older libraries would write a reference into the other file, so the crate rejects it.
 #[test]
-#[cfg(not(any(all(feature = "1.8.18", not(feature = "1.10.0")), feature = "1.10.1")))]
 fn test_empty_as_datatype_from_other_file_is_rejected() -> hdf5::Result<()> {
+    if stores_cross_file_copy() {
+        return Ok(());
+    }
     let origin = new_in_memory_file()?;
     let dtype = hdf5::Datatype::from_type::<Point>()?;
     origin.commit_datatype("point", &dtype)?;
@@ -805,8 +817,10 @@ fn test_empty_as_datatype_varlen_string() -> hdf5::Result<()> {
 }
 
 #[test]
-#[cfg(feature = "have-filter-deflate")]
 fn test_issue_223() {
+    if !hdf5::filters::deflate_available() {
+        return;
+    }
     let file = new_in_memory_file().unwrap();
 
     let data: &[u16] = &[];

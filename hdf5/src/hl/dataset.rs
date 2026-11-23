@@ -629,11 +629,9 @@ impl DatasetBuilderInner {
             }
             DatasetType::Datatype(dtype) => {
                 ensure!(!self.packed, "packed layout cannot be applied to an existing datatype");
-                #[cfg(not(any(
-                    all(feature = "1.8.18", not(feature = "1.10.0")),
-                    feature = "1.10.1"
-                )))]
-                self.ensure_same_file(dtype)?;
+                if !crate::hl::stores_cross_file_copy() {
+                    self.ensure_same_file(dtype)?;
+                }
                 dtype.clone()
             }
         };
@@ -645,7 +643,6 @@ impl DatasetBuilderInner {
     /// Libraries before 1.8.18, and 1.10.0, write such a dataset with a reference into
     /// the other file, and the dataset cannot be opened again. Later libraries store a
     /// copy of the type instead, so they need no check.
-    #[cfg(not(any(all(feature = "1.8.18", not(feature = "1.10.0")), feature = "1.10.1")))]
     fn ensure_same_file(&self, dtype: &Datatype) -> Result<()> {
         use crate::hl::location::H5O_get_info;
 
