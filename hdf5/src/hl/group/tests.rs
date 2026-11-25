@@ -261,3 +261,21 @@ pub fn test_iterators() {
         }
     })
 }
+
+#[test]
+pub fn test_link_info() {
+    use crate::LinkType;
+
+    with_tmp_file(|file| {
+        file.create_group("a/b").unwrap();
+        file.link_soft("/a/b", "a/soft").unwrap();
+        // the target file does not exist, so this also shows the link is not followed
+        file.link_external("missing.h5", "foo", "a/external").unwrap();
+        let group = file.group("a").unwrap();
+        assert_eq!(group.link_info("b").unwrap().link_type, LinkType::Hard);
+        assert_eq!(group.link_info("soft").unwrap().link_type, LinkType::Soft);
+        assert_eq!(group.link_info("external").unwrap().link_type, LinkType::External);
+        assert_eq!(file.link_info("a/b").unwrap().link_type, LinkType::Hard);
+        assert!(group.link_info("c").is_err());
+    })
+}

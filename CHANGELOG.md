@@ -1,6 +1,10 @@
 # Changelog
 
 ## hdf5-rt unreleased
+- Synced with upstream `metno/hdf5-rust` `main` at `87bbee7`: `Group::link_info`,
+  `Datatype::{compound, compound_with_size, enumeration, vlen, base}`, `CompoundMember`,
+  `EnumVariant`/`EncodedEnumVariant`, and the loader side of `H5Lget_info`, `H5Tconvert` and
+  the type-conversion exception callback.
 - Synced with upstream `metno/hdf5-rust` `main` at `0dcd41b`: `BitfieldLayout`,
   `FloatLayout`/`Normalization`, `StringPadding`, and the integer layout widths narrowed to
   the HDF5 file-format widths (`size: u32`, `bit_offset`/`bit_precision: u16`).
@@ -32,8 +36,31 @@
 - Dev-dependencies moved to `rand` 0.10, and `paste` was replaced by `pastey` to match upstream.
 
 ## hdf5 unreleased
+## hdf5-derive unreleased
+## hdf5-types unreleased
+## hdf5-sys unreleased
+## hdf5-src unreleased
+
+## hdf5 0.15.3
+Release date: Nov 24, 2026
+- Added `Group::link_info` to read a link's metadata by name without following it
+
+## hdf5-sys 0.12.7
+Release date: Nov 24, 2026
+- Added the `H5Lget_info` alias for `H5Lget_info1`/`H5Lget_info2`, matching `H5Literate`
+- Fixed `HDoff_t` width being incorrectly parsed from configuration
+
+## hdf5 0.15.2
+Release date: Nov 24, 2026
 - Fixed external dataset storage when HDF5 uses a different file-offset width from Rust's libc
 - Recognized HDF5 1.10.11 and 1.12.3 version features
+- Added `Datatype::enumeration` to construct enum datatypes from an existing integer base datatype
+- Added `Datatype::compound` and `compound_with_size` to construct compound datatypes from existing datatypes
+- Added `Datatype::vlen` to construct a variable-length sequence from an existing datatype
+- Added `EncodedEnumVariant` with `Datatype::encoded_enum_variants` to inspect stored enum values
+- Added `CompoundMember` with `Datatype::compound_members` to inspect compound datatype members
+- Added `Datatype::base` to inspect the base datatype of array, enum, and variable-length sequence datatypes
+- Added `EnumVariant` with `Datatype::enum_variants` to inspect enum datatype variants
 - Added `StringPadding` with `Datatype::string_padding` and `with_string_padding` for string datatypes
 - Added `FloatLayout` and `Normalization` with `Datatype::float_layout`, `from_float_layout`, `with_float_layout`, `vax_f32`, and `vax_f64` for floating-point datatypes
 - Added `BitfieldLayout` with `Datatype::bitfield_layout`, `from_bitfield_layout`, and `with_bitfield_layout` for bitfield datatypes
@@ -41,13 +68,16 @@
 - Added `IntegerLayout`, `IntegerLayoutBuilder`, and `Padding` with `Datatype::integer_layout`, `from_integer_layout`, and `with_integer_layout` for integer storage representation inspection and configuration
 - Added `Datatype::with_byte_order` to return a copy with the requested byte order
 - Added `File::free_sections` and `FreeSection` to enumerate HDF5-tracked free-space sections (HDF5 1.10.0+)
-## hdf5-derive unreleased
-## hdf5-types unreleased
-## hdf5-sys unreleased
+
+## hdf5-sys 0.12.6
+Release date: Nov 24, 2026
+- Added support for `HDF5_DIR` holding only a static hdf5 library such `libhdf5.a`
 - Fixed the offset ABI of `H5Pset_external` and `H5Pget_external` to match the linked HDF5 configuration
 - Recognized HDF5 1.10.11 and 1.12.3 version features
 - Fixed use of `cfg!(target_os)` and `cfg!(target_env)` in build.rs
-## hdf5-src unreleased
+
+## hdf5-src 0.10.5
+Release date: Nov 24, 2026
 - Fixed static library discovery for bundled HDF5 Debug builds, including the high-level library
 - Fixed use of `cfg!(target_os)` and `cfg!(target_env)` in build.rs
 
