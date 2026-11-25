@@ -9,7 +9,7 @@ use crate::sys::{
     },
     h5l::{
         H5L_info_t, H5L_type_t, H5Lcreate_external, H5Lcreate_hard, H5Lcreate_soft, H5Ldelete,
-        H5Lexists, H5Literate, H5Lmove, H5L_SAME_LOC,
+        H5Lexists, H5Lget_info, H5Literate, H5Lmove, H5L_SAME_LOC,
     },
     h5p::{H5Pcreate, H5Pset_create_intermediate_group},
     h5t::{H5Tcommit2, H5Topen2},
@@ -230,6 +230,16 @@ impl Group {
             Ok(h5call!(H5Lexists(self.id(), name.as_ptr(), H5P_DEFAULT))? > 0)
         })()
         .unwrap_or(false)
+    }
+
+    /// Returns the metadata of the link `name` without following it, so its target is not opened.
+    /// For a path, HDF5 still follows the links leading to the last one.
+    pub fn link_info(&self, name: &str) -> Result<LinkInfo> {
+        let name = to_cstring(name)?;
+        let mut info = std::mem::MaybeUninit::<H5L_info_t>::uninit();
+        h5call!(H5Lget_info(self.id(), name.as_ptr(), info.as_mut_ptr(), H5P_DEFAULT))?;
+        let info = unsafe { info.assume_init() };
+        Ok(LinkInfo::from(&info))
     }
 
     /// Instantiates a new typed dataset builder.

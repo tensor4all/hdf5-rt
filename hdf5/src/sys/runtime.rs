@@ -304,6 +304,37 @@ pub type H5T_conv_t = Option<
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum H5T_conv_except_t {
+    H5T_CONV_EXCEPT_RANGE_HI = 0,
+    H5T_CONV_EXCEPT_RANGE_LOW = 1,
+    H5T_CONV_EXCEPT_PRECISION = 2,
+    H5T_CONV_EXCEPT_TRUNCATE = 3,
+    H5T_CONV_EXCEPT_PINF = 4,
+    H5T_CONV_EXCEPT_NINF = 5,
+    H5T_CONV_EXCEPT_NAN = 6,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum H5T_conv_ret_t {
+    H5T_CONV_ABORT = -1,
+    H5T_CONV_UNHANDLED = 0,
+    H5T_CONV_HANDLED = 1,
+}
+
+pub type H5T_conv_except_func_t = Option<
+    extern "C" fn(
+        except_type: H5T_conv_except_t,
+        src_id: hid_t,
+        dst_id: hid_t,
+        src_buf: *mut c_void,
+        dst_buf: *mut c_void,
+        user_data: *mut c_void,
+    ) -> H5T_conv_ret_t,
+>;
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum H5S_class_t {
     H5S_NO_CLASS = -1,
     H5S_SCALAR = 0,
@@ -1388,6 +1419,17 @@ hdf5_function!(
     fn(src_id: hid_t, dst_id: hid_t, pcdata: *mut *mut H5T_cdata_t) -> H5T_conv_t
 );
 hdf5_function!(H5Tcompiler_conv, fn(src_id: hid_t, dst_id: hid_t) -> htri_t);
+hdf5_function!(
+    H5Tconvert,
+    fn(
+        src_id: hid_t,
+        dst_id: hid_t,
+        nelmts: size_t,
+        buf: *mut c_void,
+        background: *mut c_void,
+        plist_id: hid_t,
+    ) -> herr_t
+);
 hdf5_function!(H5Tdetect_class, fn(type_id: hid_t, cls: H5T_class_t) -> htri_t);
 hdf5_function!(H5Tget_pad, fn(type_id: hid_t, lsb: *mut H5T_pad_t, msb: *mut H5T_pad_t) -> herr_t);
 hdf5_function!(H5Tset_pad, fn(type_id: hid_t, lsb: H5T_pad_t, msb: H5T_pad_t) -> herr_t);
@@ -1555,6 +1597,25 @@ hdf5_function!(
     fn(loc_id: hid_t, name: *const c_char, linfo: *mut H5L_info2_t, lapl_id: hid_t) -> herr_t
 );
 
+/// Version-dependent wrapper for H5Lget_info
+/// Uses H5Lget_info2 on HDF5 1.12.0+ and H5Lget_info on earlier versions
+pub unsafe fn H5Lget_info(
+    loc_id: hid_t,
+    name: *const c_char,
+    linfo: *mut H5L_info_t,
+    lapl_id: hid_t,
+) -> herr_t {
+    if hdf5_version_at_least(1, 12, 0) {
+        H5Lget_info2(loc_id, name, linfo, lapl_id)
+    } else {
+        // In HDF5 1.10.x, the function is called "H5Lget_info" (no version suffix)
+        let lib = get_library();
+        type InfoFn = unsafe extern "C" fn(hid_t, *const c_char, *mut H5L_info_t, hid_t) -> herr_t;
+        let func: Symbol<InfoFn> = lib.get(b"H5Lget_info").expect("Failed to load H5Lget_info");
+        func(loc_id, name, linfo, lapl_id)
+    }
+}
+
 // H5O (Object)
 hdf5_function!(H5Oopen, fn(loc_id: hid_t, name: *const c_char, lapl_id: hid_t) -> hid_t);
 hdf5_function!(H5Oclose, fn(object_id: hid_t) -> herr_t);
@@ -1648,6 +1709,10 @@ hdf5_function!(H5Pget_class, fn(plist_id: hid_t) -> hid_t);
 hdf5_function!(H5Pequal, fn(id1: hid_t, id2: hid_t) -> htri_t);
 hdf5_function!(H5Pexist, fn(plist_id: hid_t, name: *const c_char) -> htri_t);
 hdf5_function!(H5Pset_create_intermediate_group, fn(plist_id: hid_t, crt_intmd: c_uint) -> herr_t);
+hdf5_function!(
+    H5Pset_type_conv_cb,
+    fn(dxpl_id: hid_t, op: H5T_conv_except_func_t, operate_data: *mut c_void) -> herr_t
+);
 hdf5_function!(H5Pset_char_encoding, fn(plist_id: hid_t, encoding: H5T_cset_t) -> herr_t);
 hdf5_function!(H5Pset_chunk, fn(plist_id: hid_t, ndims: c_int, dim: *const hsize_t) -> herr_t);
 hdf5_function!(H5Pget_chunk, fn(plist_id: hid_t, max_ndims: c_int, dim: *mut hsize_t) -> c_int);

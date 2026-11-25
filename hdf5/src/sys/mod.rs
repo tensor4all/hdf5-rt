@@ -264,8 +264,8 @@ pub mod h5i {
 pub mod h5l {
     pub use super::runtime::{
         H5L_info2_t, H5L_info_t, H5L_iterate2_t, H5L_iterate_t, H5L_type_t, H5Lcreate_external,
-        H5Lcreate_hard, H5Lcreate_soft, H5Ldelete, H5Lexists, H5Lget_info2, H5Literate,
-        H5Literate2, H5Lmove, H5L_SAME_LOC,
+        H5Lcreate_hard, H5Lcreate_soft, H5Ldelete, H5Lexists, H5Lget_info, H5Lget_info2,
+        H5Literate, H5Literate2, H5Lmove, H5L_SAME_LOC,
     };
 }
 
@@ -388,6 +388,7 @@ pub mod h5p {
         H5Pset_small_data_block_size,
         H5Pset_sym_k,
         H5Pset_szip,
+        H5Pset_type_conv_cb,
         H5Pset_userblock,
         H5Pset_vlen_mem_manager,
         H5P_CLS_ATTRIBUTE_CREATE,
@@ -458,6 +459,9 @@ pub mod h5t {
         // Types and enums
         H5T_class_t,
         H5T_cmd_t,
+        H5T_conv_except_func_t,
+        H5T_conv_except_t,
+        H5T_conv_ret_t,
         H5T_conv_t,
         H5T_cset_t,
         H5T_norm_t,
@@ -471,6 +475,7 @@ pub mod h5t {
         H5Tcommit2,
         H5Tcommitted,
         H5Tcompiler_conv,
+        H5Tconvert,
         H5Tcopy,
         H5Tcreate,
         H5Tdetect_class,
