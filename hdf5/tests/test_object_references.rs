@@ -166,3 +166,10 @@ fn test_reference_errors_on_attribute_object_reference2() {
     }
     test_reference_errors_on_attribute::<hdf5::ObjectReference2>();
 }
+
+// Compound datatypes can mix reference and enum fields without enum checks inspecting references.
+#[cfg(feature = "1.12.1")]
+#[test]
+fn test_reference_in_enum_datatype_object_reference2() {
+    test_reference_in_enum_datatype::<ObjectReference2>();
+}

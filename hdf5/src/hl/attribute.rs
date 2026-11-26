@@ -1,18 +1,30 @@
 use std::fmt::{self, Debug};
 use std::ops::Deref;
-use std::ptr::addr_of_mut;
 
-use crate::sys::h5a::H5Aget_name;
-use crate::sys::h5p::H5Pcreate;
-use crate::sys::{
-    h5::{H5_index_t, H5_iter_order_t},
-    h5a::{H5A_info_t, H5A_operator2_t, H5Acreate2, H5Adelete, H5Aiterate2},
-};
-use hdf5_types::TypeDescriptor;
+use crate::sys::h5a::{H5A_info_t, H5Acreate2, H5Adelete, H5Aget_create_plist, H5Aget_name};
 use ndarray::ArrayView;
 
-use crate::globals::H5P_ATTRIBUTE_CREATE;
+use crate::hl::plist::attribute_create::{AttributeCreate, AttributeCreateBuilder, CharEncoding};
 use crate::internal_prelude::*;
+
+/// Information about an attribute of an object.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AttrInfo {
+    /// Position in the creation order of the object's attributes, if known.
+    pub creation_order: Option<u32>,
+    /// Encoding of the attribute name. HDF5 values other than UTF-8 are reported as ASCII.
+    pub char_encoding: CharEncoding,
+    /// Size of the attribute data in bytes.
+    pub data_size: u64,
+}
+
+impl From<&H5A_info_t> for AttrInfo {
+    fn from(info: &H5A_info_t) -> Self {
+        let creation_order = if info.corder_valid == 1 { Some(info.corder) } else { None };
+        let char_encoding = CharEncoding::try_from(info.cset).unwrap_or(CharEncoding::Ascii);
+        Self { creation_order, char_encoding, data_size: info.data_size }
+    }
+}
 
 /// Represents the HDF5 attribute object.
 #[repr(transparent)]
@@ -49,47 +61,22 @@ impl Deref for Attribute {
 }
 
 impl Attribute {
+    /// Returns a copy of the attribute creation property list.
+    pub fn create_plist(&self) -> Result<AttributeCreate> {
+        h5lock!(AttributeCreate::from_id(h5try!(H5Aget_create_plist(self.id()))))
+    }
+
+    /// A short alias for `create_plist()`.
+    pub fn acpl(&self) -> Result<AttributeCreate> {
+        self.create_plist()
+    }
+
     /// Returns the name of the attribute.
     pub fn name(&self) -> String {
         // Note: We must use H5Aget_name() here. H5Iget_name() (called by
         // Location::name()) would return the name of the object this
         // attribute is attached to, not the attribute's own name.
         h5lock!(get_h5_str(|m, s| H5Aget_name(self.id(), s, m)).unwrap_or_else(|_| String::new()))
-    }
-
-    /// Returns names of all the members in the group, non-recursively.
-    pub fn attr_names(obj: &Location) -> Result<Vec<String>> {
-        unsafe extern "C" fn attributes_callback(
-            _id: hid_t,
-            attr_name: *const c_char,
-            _info: *const H5A_info_t,
-            op_data: *mut c_void,
-        ) -> herr_t {
-            std::panic::catch_unwind(|| {
-                let other_data: &mut Vec<String> =
-                    unsafe { &mut *(op_data.cast::<std::vec::Vec<std::string::String>>()) };
-                // SAFETY: caller guarantees attr_name points to valid UTF-8 C string
-                other_data.push(unsafe { string_from_cstr(attr_name) });
-                0 // Continue iteration
-            })
-            .unwrap_or(-1)
-        }
-
-        let callback_fn: H5A_operator2_t = Some(attributes_callback);
-        let iteration_position: *mut hsize_t = &mut { 0_u64 };
-        let mut result: Vec<String> = Vec::new();
-        let other_data: *mut c_void = addr_of_mut!(result).cast();
-
-        h5call!(H5Aiterate2(
-            obj.handle().id(),
-            H5_index_t::H5_INDEX_NAME,
-            H5_iter_order_t::H5_ITER_INC,
-            iteration_position,
-            callback_fn,
-            other_data
-        ))?;
-
-        Ok(result)
     }
 }
 
@@ -111,8 +98,8 @@ impl AttributeBuilder {
     }
 
     /// Sets the attribute's type from a type descriptor without initializing its data.
-    pub fn empty_as(self, type_desc: &TypeDescriptor) -> AttributeBuilderEmpty {
-        AttributeBuilderEmpty { builder: self.builder, type_desc: type_desc.clone() }
+    pub fn empty_as(self, dtype: impl Into<DatasetType>) -> AttributeBuilderEmpty {
+        AttributeBuilderEmpty { builder: self.builder, dtype: dtype.into() }
     }
 
     /// Sets the data to store in the attribute.
@@ -122,14 +109,14 @@ impl AttributeBuilder {
         T: H5Type,
         D: ndarray::Dimension,
     {
-        self.with_data_as::<A, T, D>(data, &T::type_descriptor())
+        self.with_data_as::<A, T, D>(data, T::type_descriptor())
     }
 
     /// Sets the data to store in the attribute and sets its element type with a type descriptor.
     pub fn with_data_as<'d, A, T, D>(
         self,
         data: A,
-        type_desc: &TypeDescriptor,
+        dtype: impl Into<DatasetType>,
     ) -> AttributeBuilderData<'d, T, D>
     where
         A: Into<ArrayView<'d, T, D>>,
@@ -139,7 +126,7 @@ impl AttributeBuilder {
         AttributeBuilderData {
             builder: self.builder,
             data: data.into(),
-            type_desc: type_desc.clone(),
+            dtype: dtype.into(),
             conv: Conversion::Soft,
         }
     }
@@ -150,13 +137,25 @@ impl AttributeBuilder {
         self.builder.packed(packed);
         self
     }
+
+    /// Sets the character encoding of the attribute name.
+    ///
+    /// Defaults to [`CharEncoding::Utf8`]. With [`CharEncoding::Ascii`] and the
+    /// earliest library bounds, the library stores a version 1 attribute message,
+    /// which readers older than HDF5 1.8 require.
+    #[inline]
+    #[must_use]
+    pub fn char_encoding(mut self, encoding: CharEncoding) -> Self {
+        self.builder.char_encoding(encoding);
+        self
+    }
 }
 
 #[derive(Clone)]
 /// An attribute builder with the type known
 pub struct AttributeBuilderEmpty {
     builder: AttributeBuilderInner,
-    type_desc: TypeDescriptor,
+    dtype: DatasetType,
 }
 
 impl AttributeBuilderEmpty {
@@ -164,7 +163,7 @@ impl AttributeBuilderEmpty {
     pub fn shape<S: Into<Extents>>(self, extents: S) -> AttributeBuilderEmptyShape {
         AttributeBuilderEmptyShape {
             builder: self.builder,
-            type_desc: self.type_desc,
+            dtype: self.dtype,
             extents: extents.into(),
         }
     }
@@ -180,26 +179,50 @@ impl AttributeBuilderEmpty {
         self.builder.packed(packed);
         self
     }
+
+    /// Sets the character encoding of the attribute name.
+    ///
+    /// Defaults to [`CharEncoding::Utf8`]. With [`CharEncoding::Ascii`] and the
+    /// earliest library bounds, the library stores a version 1 attribute message,
+    /// which readers older than HDF5 1.8 require.
+    #[inline]
+    #[must_use]
+    pub fn char_encoding(mut self, encoding: CharEncoding) -> Self {
+        self.builder.char_encoding(encoding);
+        self
+    }
 }
 
 #[derive(Clone)]
 /// An attribute builder with type and shape known
 pub struct AttributeBuilderEmptyShape {
     builder: AttributeBuilderInner,
-    type_desc: TypeDescriptor,
+    dtype: DatasetType,
     extents: Extents,
 }
 
 impl AttributeBuilderEmptyShape {
     /// Creates the attribute.
     pub fn create<'n, T: Into<&'n str>>(&self, name: T) -> Result<Attribute> {
-        h5lock!(self.builder.create(&self.type_desc, name.into(), &self.extents))
+        h5lock!(self.builder.create(&self.dtype, name.into(), &self.extents))
     }
 
     #[inline]
     #[must_use]
     pub fn packed(mut self, packed: bool) -> Self {
         self.builder.packed(packed);
+        self
+    }
+
+    /// Sets the character encoding of the attribute name.
+    ///
+    /// Defaults to [`CharEncoding::Utf8`]. With [`CharEncoding::Ascii`] and the
+    /// earliest library bounds, the library stores a version 1 attribute message,
+    /// which readers older than HDF5 1.8 require.
+    #[inline]
+    #[must_use]
+    pub fn char_encoding(mut self, encoding: CharEncoding) -> Self {
+        self.builder.char_encoding(encoding);
         self
     }
 }
@@ -209,7 +232,7 @@ impl AttributeBuilderEmptyShape {
 pub struct AttributeBuilderData<'d, T, D> {
     builder: AttributeBuilderInner,
     data: ArrayView<'d, T, D>,
-    type_desc: TypeDescriptor,
+    dtype: DatasetType,
     conv: Conversion,
 }
 
@@ -241,9 +264,9 @@ where
 
         h5lock!({
             let dtype_src = Datatype::from_type::<T>()?;
-            let dtype_dst = Datatype::from_descriptor(&self.type_desc)?;
+            let dtype_dst = self.dtype.to_datatype()?;
             dtype_src.ensure_convertible(&dtype_dst, self.conv)?;
-            let ds = self.builder.create(&self.type_desc, name, &extents)?;
+            let ds = self.builder.create(&self.dtype, name, &extents)?;
             if let Err(err) = ds.write(self.data.view()) {
                 self.builder.try_unlink(name);
                 Err(err)
@@ -259,6 +282,18 @@ where
         self.builder.packed(packed);
         self
     }
+
+    /// Sets the character encoding of the attribute name.
+    ///
+    /// Defaults to [`CharEncoding::Utf8`]. With [`CharEncoding::Ascii`] and the
+    /// earliest library bounds, the library stores a version 1 attribute message,
+    /// which readers older than HDF5 1.8 require.
+    #[inline]
+    #[must_use]
+    pub fn char_encoding(mut self, encoding: CharEncoding) -> Self {
+        self.builder.char_encoding(encoding);
+        self
+    }
 }
 
 #[derive(Clone)]
@@ -266,11 +301,16 @@ where
 struct AttributeBuilderInner {
     parent: Result<Handle>,
     packed: bool,
+    char_encoding: CharEncoding,
 }
 
 impl AttributeBuilderInner {
     pub fn new(parent: &Location) -> Self {
-        Self { parent: parent.try_borrow(), packed: false }
+        Self { parent: parent.try_borrow(), packed: false, char_encoding: CharEncoding::Utf8 }
+    }
+
+    pub fn char_encoding(&mut self, encoding: CharEncoding) {
+        self.char_encoding = encoding;
     }
 
     pub fn packed(&mut self, packed: bool) {
@@ -279,24 +319,27 @@ impl AttributeBuilderInner {
 
     unsafe fn create(
         &self,
-        desc: &TypeDescriptor,
+        dtype: &DatasetType,
         name: &str,
         extents: &Extents,
     ) -> Result<Attribute> {
-        // construct in-file type descriptor; convert to packed representation if needed
-        let desc = if self.packed { desc.to_packed_repr() } else { desc.to_c_repr() };
+        let datatype = match dtype {
+            DatasetType::Descriptor(desc) => {
+                // construct in-file type descriptor; convert to packed representation if needed
+                let desc = if self.packed { desc.to_packed_repr() } else { desc.to_c_repr() };
+                Datatype::from_descriptor(&desc)?
+            }
+            DatasetType::Datatype(dtype) => {
+                ensure!(!self.packed, "packed layout cannot be applied to an existing datatype");
+                dtype.clone()
+            }
+        };
 
-        let datatype = Datatype::from_descriptor(&desc)?;
         let parent = try_ref_clone!(self.parent);
 
         let dataspace = Dataspace::try_new(extents)?;
 
-        let acpl = PropertyList::from_id(h5call!(H5Pcreate(*H5P_ATTRIBUTE_CREATE))?)?;
-        // Set UTF-8 encoding for the attribute name, as Rust strings are UTF-8.
-        h5call!(crate::sys::h5p::H5Pset_char_encoding(
-            acpl.id(),
-            crate::sys::h5t::H5T_cset_t::H5T_CSET_UTF8
-        ))?;
+        let acpl = AttributeCreateBuilder::new().char_encoding(self.char_encoding).finish()?;
 
         let name = to_cstring(name)?;
         Attribute::from_id(h5try!(H5Acreate2(
@@ -321,6 +364,7 @@ impl AttributeBuilderInner {
 
 #[cfg(test)]
 pub mod attribute_tests {
+    use crate::hl::plist::attribute_create::CharEncoding;
     use crate::internal_prelude::*;
     use ndarray::{arr2, Array2};
     use std::str::FromStr;
@@ -408,6 +452,30 @@ pub mod attribute_tests {
     }
 
     #[test]
+    pub fn test_char_encoding() {
+        with_tmp_file(|file| {
+            let default = file.new_attr::<u32>().shape(()).create("default").unwrap();
+            assert_eq!(default.acpl().unwrap().char_encoding(), CharEncoding::Utf8);
+
+            let ascii = file
+                .new_attr::<u32>()
+                .char_encoding(CharEncoding::Ascii)
+                .shape(())
+                .create("ascii")
+                .unwrap();
+            assert_eq!(ascii.acpl().unwrap().char_encoding(), CharEncoding::Ascii);
+
+            let utf8 = file
+                .new_attr_builder()
+                .with_data(&arr2(&[[1, 2]]))
+                .char_encoding(CharEncoding::Utf8)
+                .create("utf8")
+                .unwrap();
+            assert_eq!(utf8.create_plist().unwrap().char_encoding(), CharEncoding::Utf8);
+        })
+    }
+
+    #[test]
     pub fn test_create_with_data() {
         with_tmp_file(|file| {
             let arr = arr2(&[[1, 2, 3], [4, 5, 6]]);
@@ -457,6 +525,18 @@ pub mod attribute_tests {
             assert_eq!(attr_names.len(), 2);
             assert!(attr_names.contains(&"foo".to_string()));
             assert!(attr_names.contains(&"bar".to_string()));
+        })
+    }
+
+    #[test]
+    pub fn test_create_with_committed_type() -> Result<()> {
+        with_tmp_file(|file| {
+            let committed = Datatype::from_type::<u32>()?;
+            file.commit_datatype("inty", &committed)?;
+
+            file.new_attr_builder().empty_as(committed).create("bar")?;
+
+            Ok(())
         })
     }
 }

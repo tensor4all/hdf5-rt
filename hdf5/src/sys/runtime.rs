@@ -33,6 +33,19 @@ pub type hssize_t = c_long;
 pub type haddr_t = u64;
 /// HDF5 tri-state type
 pub type htri_t = c_int;
+/// Signed external-file offset for `H5Pset_external`/`H5Pget_external`.
+///
+/// Upstream derives this from the linked library's `H5_SIZEOF_OFF_T`, which the
+/// dlopen loader cannot inspect. It therefore follows the target pointer width:
+/// `i64` on 64-bit targets (where `off_t` is 8 bytes) and `i32` otherwise.
+/// This is an approximation: a 32-bit target whose HDF5 was built with large-file
+/// support (64-bit `off_t`), or HDF5 2.x on 32-bit Windows, is not representable
+/// and external-file offsets would be wrong. The crate is only tested on 64-bit
+/// targets; 32-bit plus large-file HDF5 needs a real `H5_SIZEOF_OFF_T` probe.
+#[cfg(target_pointer_width = "64")]
+pub type HDoff_t = i64;
+#[cfg(not(target_pointer_width = "64"))]
+pub type HDoff_t = i32;
 
 /// Invalid HDF5 ID
 pub const H5I_INVALID_HID: hid_t = -1;
@@ -213,11 +226,30 @@ pub const H5T_CSET_UTF8: H5T_cset_t = H5T_cset_t::H5T_CSET_UTF8;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum H5T_pad_t {
+    H5T_PAD_ERROR = -1,
+    H5T_PAD_ZERO = 0,
+    H5T_PAD_ONE = 1,
+    H5T_PAD_BACKGROUND = 2,
+    H5T_NPAD = 3,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum H5T_str_t {
     H5T_STR_ERROR = -1,
     H5T_STR_NULLTERM = 0,
     H5T_STR_NULLPAD = 1,
     H5T_STR_SPACEPAD = 2,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum H5T_norm_t {
+    H5T_NORM_ERROR = -1,
+    H5T_NORM_IMPLIED = 0,
+    H5T_NORM_MSBSET = 1,
+    H5T_NORM_NONE = 2,
 }
 
 #[repr(C)]
@@ -268,6 +300,37 @@ pub type H5T_conv_t = Option<
         bkg: *mut c_void,
         dxpl: hid_t,
     ) -> herr_t,
+>;
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum H5T_conv_except_t {
+    H5T_CONV_EXCEPT_RANGE_HI = 0,
+    H5T_CONV_EXCEPT_RANGE_LOW = 1,
+    H5T_CONV_EXCEPT_PRECISION = 2,
+    H5T_CONV_EXCEPT_TRUNCATE = 3,
+    H5T_CONV_EXCEPT_PINF = 4,
+    H5T_CONV_EXCEPT_NINF = 5,
+    H5T_CONV_EXCEPT_NAN = 6,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum H5T_conv_ret_t {
+    H5T_CONV_ABORT = -1,
+    H5T_CONV_UNHANDLED = 0,
+    H5T_CONV_HANDLED = 1,
+}
+
+pub type H5T_conv_except_func_t = Option<
+    extern "C" fn(
+        except_type: H5T_conv_except_t,
+        src_id: hid_t,
+        dst_id: hid_t,
+        src_buf: *mut c_void,
+        dst_buf: *mut c_void,
+        user_data: *mut c_void,
+    ) -> H5T_conv_ret_t,
 >;
 
 #[repr(C)]
@@ -783,9 +846,18 @@ pub const H5AC__CACHE_IMAGE__ENTRY_AGEOUT__NONE: c_int = -1;
 pub type H5L_info_t = H5L_info2_t;
 
 #[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum H5G_storage_type_t {
+    H5G_STORAGE_TYPE_UNKNOWN = -1,
+    H5G_STORAGE_TYPE_SYMBOL_TABLE = 0,
+    H5G_STORAGE_TYPE_COMPACT = 1,
+    H5G_STORAGE_TYPE_DENSE = 2,
+}
+
+#[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct H5G_info_t {
-    pub storage_type: c_int,
+    pub storage_type: H5G_storage_type_t,
     pub nlinks: hsize_t,
     pub max_corder: i64,
     pub mounted: hbool_t,
@@ -1109,6 +1181,7 @@ hdf5_function!(H5Gopen2, fn(loc_id: hid_t, name: *const c_char, gapl_id: hid_t) 
 hdf5_function!(H5Gclose, fn(group_id: hid_t) -> herr_t);
 hdf5_function!(H5Gget_create_plist, fn(group_id: hid_t) -> hid_t);
 hdf5_function!(H5Gget_info, fn(loc_id: hid_t, ginfo: *mut H5G_info_t) -> herr_t);
+hdf5_function!(H5Gcreate_anon, fn(loc_id: hid_t, gcpl_id: hid_t, gapl_id: hid_t) -> hid_t);
 
 // H5D (Dataset)
 hdf5_function!(
@@ -1271,6 +1344,20 @@ hdf5_function!(H5Tget_order, fn(type_id: hid_t) -> H5T_order_t);
 hdf5_function!(H5Tget_sign, fn(type_id: hid_t) -> H5T_sign_t);
 hdf5_function!(H5Tget_precision, fn(type_id: hid_t) -> size_t);
 hdf5_function!(H5Tget_offset, fn(type_id: hid_t) -> c_int);
+hdf5_function!(
+    H5Tget_fields,
+    fn(
+        type_id: hid_t,
+        spos: *mut size_t,
+        epos: *mut size_t,
+        esize: *mut size_t,
+        mpos: *mut size_t,
+        msize: *mut size_t,
+    ) -> herr_t
+);
+hdf5_function!(H5Tget_ebias, fn(type_id: hid_t) -> size_t);
+hdf5_function!(H5Tget_norm, fn(type_id: hid_t) -> H5T_norm_t);
+hdf5_function!(H5Tget_inpad, fn(type_id: hid_t) -> H5T_pad_t);
 hdf5_function!(H5Tget_nmembers, fn(type_id: hid_t) -> c_int);
 hdf5_function!(H5Tget_member_name, fn(type_id: hid_t, membno: c_uint) -> *mut c_char);
 hdf5_function!(H5Tget_member_offset, fn(type_id: hid_t, membno: c_uint) -> size_t);
@@ -1291,6 +1378,8 @@ hdf5_function!(H5Tset_offset, fn(type_id: hid_t, offset: size_t) -> herr_t);
 hdf5_function!(H5Tset_cset, fn(type_id: hid_t, cset: H5T_cset_t) -> herr_t);
 hdf5_function!(H5Tset_strpad, fn(type_id: hid_t, strpad: H5T_str_t) -> herr_t);
 hdf5_function!(H5Tset_ebias, fn(type_id: hid_t, ebias: size_t) -> herr_t);
+hdf5_function!(H5Tset_norm, fn(type_id: hid_t, norm: H5T_norm_t) -> herr_t);
+hdf5_function!(H5Tset_inpad, fn(type_id: hid_t, inpad: H5T_pad_t) -> herr_t);
 hdf5_function!(
     H5Tset_fields,
     fn(
@@ -1330,6 +1419,22 @@ hdf5_function!(
     fn(src_id: hid_t, dst_id: hid_t, pcdata: *mut *mut H5T_cdata_t) -> H5T_conv_t
 );
 hdf5_function!(H5Tcompiler_conv, fn(src_id: hid_t, dst_id: hid_t) -> htri_t);
+hdf5_function!(
+    H5Tconvert,
+    fn(
+        src_id: hid_t,
+        dst_id: hid_t,
+        nelmts: size_t,
+        buf: *mut c_void,
+        background: *mut c_void,
+        plist_id: hid_t,
+    ) -> herr_t
+);
+hdf5_function!(H5Tdetect_class, fn(type_id: hid_t, cls: H5T_class_t) -> htri_t);
+hdf5_function!(H5Tget_pad, fn(type_id: hid_t, lsb: *mut H5T_pad_t, msb: *mut H5T_pad_t) -> herr_t);
+hdf5_function!(H5Tset_pad, fn(type_id: hid_t, lsb: H5T_pad_t, msb: H5T_pad_t) -> herr_t);
+hdf5_function!(H5Tset_sign, fn(type_id: hid_t, sign: H5T_sign_t) -> herr_t);
+hdf5_function!(H5Topen2, fn(loc_id: hid_t, name: *const c_char, tapl_id: hid_t) -> hid_t);
 
 // H5A (Attribute)
 hdf5_function!(
@@ -1366,6 +1471,17 @@ hdf5_function!(H5Aget_storage_size, fn(attr_id: hid_t) -> hsize_t);
 hdf5_function!(H5Adelete, fn(loc_id: hid_t, name: *const c_char) -> herr_t);
 hdf5_function!(H5Aexists, fn(obj_id: hid_t, attr_name: *const c_char) -> htri_t);
 hdf5_function!(H5Aget_num_attrs, fn(loc_id: hid_t) -> c_int);
+hdf5_function!(H5Aget_create_plist, fn(attr_id: hid_t) -> hid_t);
+hdf5_function!(
+    H5Aget_info_by_name,
+    fn(
+        loc_id: hid_t,
+        obj_name: *const c_char,
+        attr_name: *const c_char,
+        ainfo: *mut H5A_info_t,
+        lapl_id: hid_t,
+    ) -> herr_t
+);
 hdf5_function!(
     H5Aiterate2,
     fn(
@@ -1481,6 +1597,25 @@ hdf5_function!(
     fn(loc_id: hid_t, name: *const c_char, linfo: *mut H5L_info2_t, lapl_id: hid_t) -> herr_t
 );
 
+/// Version-dependent wrapper for H5Lget_info
+/// Uses H5Lget_info2 on HDF5 1.12.0+ and H5Lget_info on earlier versions
+pub unsafe fn H5Lget_info(
+    loc_id: hid_t,
+    name: *const c_char,
+    linfo: *mut H5L_info_t,
+    lapl_id: hid_t,
+) -> herr_t {
+    if hdf5_version_at_least(1, 12, 0) {
+        H5Lget_info2(loc_id, name, linfo, lapl_id)
+    } else {
+        // In HDF5 1.10.x, the function is called "H5Lget_info" (no version suffix)
+        let lib = get_library();
+        type InfoFn = unsafe extern "C" fn(hid_t, *const c_char, *mut H5L_info_t, hid_t) -> herr_t;
+        let func: Symbol<InfoFn> = lib.get(b"H5Lget_info").expect("Failed to load H5Lget_info");
+        func(loc_id, name, linfo, lapl_id)
+    }
+}
+
 // H5O (Object)
 hdf5_function!(H5Oopen, fn(loc_id: hid_t, name: *const c_char, lapl_id: hid_t) -> hid_t);
 hdf5_function!(H5Oclose, fn(object_id: hid_t) -> herr_t);
@@ -1574,6 +1709,10 @@ hdf5_function!(H5Pget_class, fn(plist_id: hid_t) -> hid_t);
 hdf5_function!(H5Pequal, fn(id1: hid_t, id2: hid_t) -> htri_t);
 hdf5_function!(H5Pexist, fn(plist_id: hid_t, name: *const c_char) -> htri_t);
 hdf5_function!(H5Pset_create_intermediate_group, fn(plist_id: hid_t, crt_intmd: c_uint) -> herr_t);
+hdf5_function!(
+    H5Pset_type_conv_cb,
+    fn(dxpl_id: hid_t, op: H5T_conv_except_func_t, operate_data: *mut c_void) -> herr_t
+);
 hdf5_function!(H5Pset_char_encoding, fn(plist_id: hid_t, encoding: H5T_cset_t) -> herr_t);
 hdf5_function!(H5Pset_chunk, fn(plist_id: hid_t, ndims: c_int, dim: *const hsize_t) -> herr_t);
 hdf5_function!(H5Pget_chunk, fn(plist_id: hid_t, max_ndims: c_int, dim: *mut hsize_t) -> c_int);
@@ -1818,13 +1957,13 @@ hdf5_function!(
         idx: c_uint,
         name_size: size_t,
         name: *mut c_char,
-        offset: *mut i64,
+        offset: *mut HDoff_t,
         size: *mut hsize_t,
     ) -> herr_t
 );
 hdf5_function!(
     H5Pset_external,
-    fn(plist_id: hid_t, name: *const c_char, offset: i64, size: hsize_t) -> herr_t
+    fn(plist_id: hid_t, name: *const c_char, offset: HDoff_t, size: hsize_t) -> herr_t
 );
 hdf5_function!(H5Pget_external_count, fn(plist_id: hid_t) -> c_int);
 hdf5_function!(H5Pget_gc_references, fn(fapl_id: hid_t, gc_ref: *mut c_uint) -> herr_t);
@@ -1861,6 +2000,18 @@ hdf5_function!(H5Pget_char_encoding, fn(plist_id: hid_t, encoding: *mut H5T_cset
 hdf5_function!(H5Pget_istore_k, fn(plist_id: hid_t, ik: *mut c_uint) -> herr_t);
 hdf5_function!(H5Pset_istore_k, fn(plist_id: hid_t, ik: c_uint) -> herr_t);
 hdf5_function!(H5Pget_sym_k, fn(plist_id: hid_t, ik: *mut c_uint, lk: *mut c_uint) -> herr_t);
+hdf5_function!(
+    H5Pset_sizes,
+    fn(plist_id: hid_t, sizeof_addr: size_t, sizeof_size: size_t) -> herr_t
+);
+hdf5_function!(
+    H5Pget_link_phase_change,
+    fn(plist_id: hid_t, max_compact: *mut c_uint, min_dense: *mut c_uint) -> herr_t
+);
+hdf5_function!(
+    H5Pset_link_phase_change,
+    fn(plist_id: hid_t, max_compact: c_uint, min_dense: c_uint) -> herr_t
+);
 hdf5_function!(H5Pset_sym_k, fn(plist_id: hid_t, ik: c_uint, lk: c_uint) -> herr_t);
 hdf5_function!(
     H5Pget_sizes,
@@ -1990,7 +2141,7 @@ hdf5_function!(H5Zregister, fn(cls: *const H5Z_class2_t) -> herr_t);
 
 macro_rules! define_native_type {
     ($name:ident, $symbol:literal) => {
-        paste::paste! {
+        pastey::paste! {
             static [<_ $name _STORAGE>]: OnceLock<hid_t> = OnceLock::new();
 
             pub fn [<$name _get>]() -> hid_t {
@@ -2011,7 +2162,7 @@ macro_rules! define_native_type {
     // In HDF5 < 1.12, the _ID_g symbols exist but contain invalid values,
     // so we must use the _g symbols instead.
     ($name:ident, $symbol_new:literal, $symbol_old:literal) => {
-        paste::paste! {
+        pastey::paste! {
             static [<_ $name _STORAGE>]: OnceLock<hid_t> = OnceLock::new();
 
             pub fn [<$name _get>]() -> hid_t {
@@ -2152,6 +2303,7 @@ define_native_type!(H5E_FILE, "H5E_FILE_g");
 define_native_type!(H5E_IO, "H5E_IO_g");
 define_native_type!(H5E_FUNC, "H5E_FUNC_g");
 define_native_type!(H5E_ATOM, "H5E_ATOM_g");
+define_native_type!(H5E_ID, "H5E_ID_g");
 define_native_type!(H5E_CACHE, "H5E_CACHE_g");
 define_native_type!(H5E_LINK, "H5E_LINK_g");
 define_native_type!(H5E_BTREE, "H5E_BTREE_g");
@@ -2183,6 +2335,9 @@ define_native_type!(H5E_ALIGNMENT, "H5E_ALIGNMENT_g");
 define_native_type!(H5E_ALREADYEXISTS, "H5E_ALREADYEXISTS_g");
 define_native_type!(H5E_ALREADYINIT, "H5E_ALREADYINIT_g");
 define_native_type!(H5E_BADATOM, "H5E_BADATOM_g");
+define_native_type!(H5E_BADID, "H5E_BADID_g");
+define_native_type!(H5E_LOGFAIL, "H5E_LOGFAIL_g");
+define_native_type!(H5E_LOGGING, "H5E_LOGGING_g");
 define_native_type!(H5E_BADFILE, "H5E_BADFILE_g");
 define_native_type!(H5E_BADGROUP, "H5E_BADGROUP_g");
 define_native_type!(H5E_BADITER, "H5E_BADITER_g");
@@ -2334,55 +2489,4 @@ define_native_type!(H5P_LST_LINK_CREATE, "H5P_LST_LINK_CREATE_ID_g");
 define_native_type!(H5P_LST_LINK_ACCESS, "H5P_LST_LINK_ACCESS_ID_g");
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_hdf5_version_stored() {
-        // Initialize HDF5 library
-        init(None).expect("Failed to initialize HDF5");
-
-        // Version should be accessible after init
-        let version = hdf5_version().expect("Version should be stored after init");
-
-        // Version should be at least 1.10.4 (our minimum)
-        assert!(
-            hdf5_version_at_least(1, 10, 4),
-            "Version {}.{}.{} should be at least 1.10.4",
-            version.major,
-            version.minor,
-            version.micro
-        );
-
-        // Major version should be 1 or 2 (HDF5 2.0 released)
-        assert!(
-            version.major == 1 || version.major == 2,
-            "Major version {} should be 1 or 2",
-            version.major
-        );
-
-        // For HDF5 1.x, minor version should be at least 10
-        // For HDF5 2.x, minor version starts from 0
-        if version.major == 1 {
-            assert!(
-                version.minor >= 10,
-                "For HDF5 1.x, minor version {} should be at least 10",
-                version.minor
-            );
-        }
-    }
-
-    #[test]
-    fn test_h5o_info1_t_type() {
-        // H5O_info1_t should be a valid type with reasonable size
-        let size = std::mem::size_of::<H5O_info1_t>();
-        assert!(size > 0, "H5O_info1_t should have non-zero size");
-
-        // Should be able to create a zeroed instance
-        let info: H5O_info1_t = unsafe { std::mem::zeroed() };
-        assert_eq!(info.fileno, 0);
-        assert_eq!(info.addr, 0);
-        assert_eq!(info.rc, 0);
-        assert_eq!(info.num_attrs, 0);
-    }
-}
+mod tests;

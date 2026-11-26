@@ -15,15 +15,15 @@ pub mod h5 {
         c_char, c_double, c_float, c_int, c_long, c_uint, c_ulong, c_void, haddr_t, hbool_t,
         herr_t, hid_t, hsize_t, hssize_t, htri_t, size_t, ssize_t, H5_index_t, H5_iter_order_t,
         H5close, H5dont_atexit, H5free_memory, H5get_libversion, H5is_library_threadsafe, H5open,
-        H5I_INVALID_HID, HADDR_UNDEF,
+        HDoff_t, H5I_INVALID_HID, HADDR_UNDEF,
     };
 }
 
 pub mod h5a {
     pub use super::runtime::{
-        H5A_info_t, H5A_operator2_t, H5Aclose, H5Acreate2, H5Adelete, H5Aexists, H5Aget_name,
-        H5Aget_num_attrs, H5Aget_space, H5Aget_storage_size, H5Aget_type, H5Aiterate2, H5Aopen,
-        H5Aopen_by_idx, H5Aread, H5Awrite,
+        H5A_info_t, H5A_operator2_t, H5Aclose, H5Acreate2, H5Adelete, H5Aexists,
+        H5Aget_create_plist, H5Aget_info_by_name, H5Aget_name, H5Aget_num_attrs, H5Aget_space,
+        H5Aget_storage_size, H5Aget_type, H5Aiterate2, H5Aopen, H5Aopen_by_idx, H5Aread, H5Awrite,
     };
 }
 
@@ -69,6 +69,7 @@ pub mod h5e {
         H5E_BADATOM,
         H5E_BADFILE,
         H5E_BADGROUP,
+        H5E_BADID,
         H5E_BADITER,
         H5E_BADMESG,
         H5E_BADRANGE,
@@ -163,10 +164,13 @@ pub mod h5e {
         H5E_FSPACE,
         H5E_FUNC,
         H5E_HEAP,
+        H5E_ID,
         H5E_INTERNAL,
         H5E_IO,
         H5E_LINK,
         H5E_LINKCOUNT,
+        H5E_LOGFAIL,
+        H5E_LOGGING,
         H5E_MOUNT,
         H5E_MPI,
         H5E_MPIERRSTR,
@@ -245,7 +249,8 @@ pub mod h5fd {
 
 pub mod h5g {
     pub use super::runtime::{
-        H5G_info_t, H5Gclose, H5Gcreate2, H5Gget_create_plist, H5Gget_info, H5Gopen2,
+        H5G_info_t, H5G_storage_type_t, H5Gclose, H5Gcreate2, H5Gcreate_anon, H5Gget_create_plist,
+        H5Gget_info, H5Gopen2,
     };
 }
 
@@ -259,8 +264,8 @@ pub mod h5i {
 pub mod h5l {
     pub use super::runtime::{
         H5L_info2_t, H5L_info_t, H5L_iterate2_t, H5L_iterate_t, H5L_type_t, H5Lcreate_external,
-        H5Lcreate_hard, H5Lcreate_soft, H5Ldelete, H5Lexists, H5Lget_info2, H5Literate,
-        H5Literate2, H5Lmove, H5L_SAME_LOC,
+        H5Lcreate_hard, H5Lcreate_soft, H5Ldelete, H5Lexists, H5Lget_info, H5Lget_info2,
+        H5Literate, H5Literate2, H5Lmove, H5L_SAME_LOC,
     };
 }
 
@@ -319,6 +324,7 @@ pub mod h5p {
         H5Pget_layout,
         H5Pget_libver_bounds,
         H5Pget_link_creation_order,
+        H5Pget_link_phase_change,
         H5Pget_mdc_config,
         H5Pget_meta_block_size,
         H5Pget_nfilters,
@@ -367,6 +373,7 @@ pub mod h5p {
         H5Pset_layout,
         H5Pset_libver_bounds,
         H5Pset_link_creation_order,
+        H5Pset_link_phase_change,
         H5Pset_mdc_config,
         H5Pset_meta_block_size,
         H5Pset_nbit,
@@ -377,9 +384,11 @@ pub mod h5p {
         H5Pset_shared_mesg_phase_change,
         H5Pset_shuffle,
         H5Pset_sieve_buf_size,
+        H5Pset_sizes,
         H5Pset_small_data_block_size,
         H5Pset_sym_k,
         H5Pset_szip,
+        H5Pset_type_conv_cb,
         H5Pset_userblock,
         H5Pset_vlen_mem_manager,
         H5P_CLS_ATTRIBUTE_CREATE,
@@ -450,9 +459,14 @@ pub mod h5t {
         // Types and enums
         H5T_class_t,
         H5T_cmd_t,
+        H5T_conv_except_func_t,
+        H5T_conv_except_t,
+        H5T_conv_ret_t,
         H5T_conv_t,
         H5T_cset_t,
+        H5T_norm_t,
         H5T_order_t,
+        H5T_pad_t,
         H5T_sign_t,
         H5T_str_t,
         // Functions
@@ -461,8 +475,10 @@ pub mod h5t {
         H5Tcommit2,
         H5Tcommitted,
         H5Tcompiler_conv,
+        H5Tconvert,
         H5Tcopy,
         H5Tcreate,
+        H5Tdetect_class,
         H5Tenum_create,
         H5Tenum_insert,
         H5Tequal,
@@ -471,14 +487,19 @@ pub mod h5t {
         H5Tget_array_ndims,
         H5Tget_class,
         H5Tget_cset,
+        H5Tget_ebias,
+        H5Tget_fields,
+        H5Tget_inpad,
         H5Tget_member_name,
         H5Tget_member_offset,
         H5Tget_member_type,
         H5Tget_member_value,
         H5Tget_native_type,
         H5Tget_nmembers,
+        H5Tget_norm,
         H5Tget_offset,
         H5Tget_order,
+        H5Tget_pad,
         H5Tget_precision,
         H5Tget_sign,
         H5Tget_size,
@@ -486,12 +507,17 @@ pub mod h5t {
         H5Tget_super,
         H5Tinsert,
         H5Tis_variable_str,
+        H5Topen2,
         H5Tset_cset,
         H5Tset_ebias,
         H5Tset_fields,
+        H5Tset_inpad,
+        H5Tset_norm,
         H5Tset_offset,
         H5Tset_order,
+        H5Tset_pad,
         H5Tset_precision,
+        H5Tset_sign,
         H5Tset_size,
         H5Tset_strpad,
         H5Tvlen_create,

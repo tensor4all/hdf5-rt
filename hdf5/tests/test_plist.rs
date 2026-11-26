@@ -1,9 +1,14 @@
+#[cfg(feature = "mpio")]
 use std::mem;
 
 use hdf5::dataset::*;
 use hdf5::file::*;
+use hdf5::filters::Filter;
+use hdf5::plist::group_create::LinkPhaseChange;
 use hdf5::plist::*;
+use hdf5::{MajorErrorCode, MinorErrorCode};
 use hdf5_rt as hdf5;
+use std::str::FromStr;
 
 macro_rules! test_pl {
     ($ty:ident, $field:ident ($($arg:expr),+): $($name:ident=$value:expr),+) => (
@@ -15,7 +20,7 @@ macro_rules! test_pl {
         b.$field($($arg,)+);
         let fapl = b.finish()?;
         $(assert_eq!(fapl.$field().$name, $value);)+
-        paste::paste! { $(assert_eq!(fapl.[<get_ $field>]()?.$name, $value);)+ }
+        pastey::paste! { $(assert_eq!(fapl.[<get_ $field>]()?.$name, $value);)+ }
     });
 
     ($ty:ident, $field:ident: $($name:ident=$value:expr),+) => (
@@ -31,7 +36,7 @@ macro_rules! test_pl {
         b.$field($arg);
         let fapl = b.finish()?;
         assert_eq!(fapl.$field(), $value);
-        paste::paste! { assert_eq!(fapl.[<get_ $field>]()?, $value); }
+        pastey::paste! { assert_eq!(fapl.[<get_ $field>]()?, $value); }
     });
 
     ($ty:ident, $field:ident: $value:expr) => ({
@@ -82,8 +87,8 @@ fn test_fcpl_common() -> hdf5::Result<()> {
 fn test_fcpl_sizes() -> hdf5::Result<()> {
     use hdf5::sys::h5::hsize_t;
     let fcpl = FileCreate::try_new()?;
-    assert_eq!(fcpl.sizes().sizeof_addr, mem::size_of::<hsize_t>());
-    assert_eq!(fcpl.sizes().sizeof_size, mem::size_of::<hsize_t>());
+    assert_eq!(fcpl.sizes().sizeof_addr, Sizeof::Bytes8);
+    assert_eq!(fcpl.sizes().sizeof_size, Sizeof::Bytes8);
     Ok(())
 }
 
@@ -91,6 +96,13 @@ fn test_fcpl_sizes() -> hdf5::Result<()> {
 fn test_fcpl_set_userblock() -> hdf5::Result<()> {
     test_pl!(FC, userblock: 0);
     test_pl!(FC, userblock: 4096);
+    Ok(())
+}
+
+#[test]
+fn test_fcpl_set_sizes() -> hdf5::Result<()> {
+    test_pl!(FC, sizes: SizeofInfo { sizeof_addr: Sizeof::Bytes2, sizeof_size: Sizeof::Bytes4 });
+    test_pl!(FC, sizes: SizeofInfo { sizeof_addr: Sizeof::Bytes8, sizeof_size: Sizeof::Bytes16 });
     Ok(())
 }
 
@@ -151,11 +163,19 @@ fn test_fcpl_attr_phase_change() -> hdf5::Result<()> {
 
 #[test]
 fn test_fcpl_attr_creation_order() -> hdf5::Result<()> {
-    assert_eq!(FC::try_new()?.get_attr_creation_order()?.bits(), 0);
-    assert_eq!(FC::try_new()?.attr_creation_order().bits(), 0);
-    test_pl!(FC, attr_creation_order: AttrCreationOrder::TRACKED);
-    test_pl!(FC, attr_creation_order: AttrCreationOrder::TRACKED | AttrCreationOrder::INDEXED);
-    assert!(FCB::new().attr_creation_order(AttrCreationOrder::INDEXED).finish().is_err());
+    assert_eq!(FC::try_new()?.get_attr_creation_order()?, AttrCreationOrder::Untracked);
+    assert_eq!(FC::try_new()?.attr_creation_order(), AttrCreationOrder::Untracked);
+    test_pl!(FC, attr_creation_order: AttrCreationOrder::Tracked);
+    test_pl!(FC, attr_creation_order: AttrCreationOrder::Indexed);
+    Ok(())
+}
+
+#[test]
+fn test_fcpl_link_creation_order() -> hdf5::Result<()> {
+    assert_eq!(FC::try_new()?.get_link_creation_order()?, LinkCreationOrder::Untracked);
+    assert_eq!(FC::try_new()?.link_creation_order(), LinkCreationOrder::Untracked);
+    test_pl!(FC, link_creation_order: LinkCreationOrder::Tracked);
+    test_pl!(FC, link_creation_order: LinkCreationOrder::Indexed);
     Ok(())
 }
 
@@ -626,6 +646,125 @@ fn test_dapl_set_virtual_printf_gap() -> hdf5::Result<()> {
     Ok(())
 }
 
+type GC = GroupCreate;
+type GCB = GroupCreateBuilder;
+
+#[test]
+fn test_gcpl_common() -> hdf5::Result<()> {
+    test_pl_common!(GC, PropertyListClass::GroupCreate, |b: &mut GCB| b
+        .obj_track_times(false)
+        .finish());
+    Ok(())
+}
+
+#[test]
+fn test_gcpl_filters() -> hdf5::Result<()> {
+    let pl = GC::try_new()?;
+    assert_eq!(pl.get_filters()?, vec![]);
+    assert!(!pl.has_filters());
+    assert!(pl.all_filters_avail());
+
+    let mut expected = vec![Filter::fletcher32()];
+    let mut b = GCB::new();
+    if hdf5::filters::deflate_available() {
+        expected.insert(0, Filter::deflate(7));
+        b.deflate(7);
+    }
+    let pl = b.fletcher32().finish()?;
+    assert_eq!(pl.get_filters()?, expected);
+    assert_eq!(pl.filters(), expected);
+    assert!(pl.has_filters());
+    assert!(pl.all_filters_avail());
+    assert_eq!(GCB::from_plist(&pl)?.finish()?.get_filters()?, expected);
+    assert_eq!(GCB::from_plist(&pl)?.clear_filters().finish()?.get_filters()?, vec![]);
+
+    let pl = GCB::new().set_filters(&expected).finish()?;
+    assert_eq!(pl.filters(), expected);
+
+    // HDF5 tries to load a plugin for an unregistered filter in H5Pset_filter, which
+    // fails on some versions, so add a built-in filter by its identifier
+    let pl = GCB::new().add_filter(Filter::fletcher32().id(), &[]).finish()?;
+    assert_eq!(pl.filters(), vec![Filter::fletcher32()]);
+
+    // Shuffle only applies to datasets
+    assert!(GCB::new().set_filters(&[Filter::shuffle()]).finish().is_err());
+    Ok(())
+}
+
+#[test]
+fn test_gcpl_obj_track_times() -> hdf5::Result<()> {
+    assert_eq!(GC::try_new()?.get_obj_track_times()?, true);
+    assert_eq!(GC::try_new()?.obj_track_times(), true);
+    test_pl!(GC, obj_track_times: true);
+    test_pl!(GC, obj_track_times: false);
+    assert_eq!(
+        GCB::from_plist(&GCB::new().obj_track_times(false).finish()?)?.finish()?.obj_track_times(),
+        false
+    );
+    Ok(())
+}
+
+#[test]
+fn test_gcpl_attr_phase_change() -> hdf5::Result<()> {
+    assert_eq!(GC::try_new()?.get_attr_phase_change()?, AttrPhaseChange::default());
+    assert_eq!(GC::try_new()?.attr_phase_change(), AttrPhaseChange::default());
+    let pl = GCB::new().attr_phase_change(34, 21).finish()?;
+    let expected = AttrPhaseChange { max_compact: 34, min_dense: 21 };
+    assert_eq!(pl.get_attr_phase_change()?, expected);
+    assert_eq!(pl.attr_phase_change(), expected);
+    assert_eq!(GCB::from_plist(&pl)?.finish()?.get_attr_phase_change()?, expected);
+    let err = GCB::new().attr_phase_change(12, 34).finish().unwrap_err();
+    assert!(err.contains_major(MajorErrorCode::Args), "{err:?}");
+    assert!(err.contains_minor(MinorErrorCode::BadRange), "{err:?}");
+    Ok(())
+}
+
+#[test]
+fn test_gcpl_link_phase_change() -> hdf5::Result<()> {
+    assert_eq!(GC::try_new()?.get_link_phase_change()?, LinkPhaseChange::default());
+    assert_eq!(GC::try_new()?.link_phase_change(), LinkPhaseChange::default());
+    let expected = LinkPhaseChange { max_compact: 34, min_dense: 21 };
+    let pl = GCB::new().link_phase_change(expected).finish()?;
+    assert_eq!(pl.get_link_phase_change()?, expected);
+    assert_eq!(pl.link_phase_change(), expected);
+    assert_eq!(GCB::from_plist(&pl)?.finish()?.get_link_phase_change()?, expected);
+    let invalid = LinkPhaseChange { max_compact: 12, min_dense: 34 };
+    let err = GCB::new().link_phase_change(invalid).finish().unwrap_err();
+    assert!(err.contains_major(MajorErrorCode::Args), "{err:?}");
+    assert!(err.contains_minor(MinorErrorCode::BadRange), "{err:?}");
+    Ok(())
+}
+
+#[test]
+fn test_gcpl_attr_creation_order() -> hdf5::Result<()> {
+    assert_eq!(GC::try_new()?.get_attr_creation_order()?, AttrCreationOrder::Untracked);
+    assert_eq!(GC::try_new()?.attr_creation_order(), AttrCreationOrder::Untracked);
+    test_pl!(GC, attr_creation_order: AttrCreationOrder::Tracked);
+    test_pl!(GC, attr_creation_order: AttrCreationOrder::Indexed);
+    assert_eq!(
+        GCB::from_plist(&GCB::new().attr_creation_order(AttrCreationOrder::Indexed).finish()?)?
+            .finish()?
+            .attr_creation_order(),
+        AttrCreationOrder::Indexed
+    );
+    Ok(())
+}
+
+#[test]
+fn test_gcpl_link_creation_order() -> hdf5::Result<()> {
+    assert_eq!(GC::try_new()?.get_link_creation_order()?, LinkCreationOrder::Untracked);
+    assert_eq!(GC::try_new()?.link_creation_order(), LinkCreationOrder::Untracked);
+    test_pl!(GC, link_creation_order: LinkCreationOrder::Tracked);
+    test_pl!(GC, link_creation_order: LinkCreationOrder::Indexed);
+    assert_eq!(
+        GCB::from_plist(&GCB::new().link_creation_order(LinkCreationOrder::Indexed).finish()?)?
+            .finish()?
+            .link_creation_order(),
+        LinkCreationOrder::Indexed
+    );
+    Ok(())
+}
+
 type DC = DatasetCreate;
 type DCB = DatasetCreateBuilder;
 
@@ -761,6 +900,19 @@ fn test_dcpl_external() -> hdf5::Result<()> {
     Ok(())
 }
 
+#[test]
+// HDoff_t changed size in HDF5 2.0 to match target pointer width on 64bit platforms
+// which was not the case for windows in previous versions
+#[cfg(all(target_pointer_width = "64", any(not(windows), feature = "2.0.0")))]
+fn test_dcpl_external_offset_beyond_32_bits() -> hdf5::Result<()> {
+    assert_eq!(std::mem::size_of::<hdf5::sys::h5::HDoff_t>(), 8);
+    // Fails if HDoff_t is narrower than the linked HDF5's, e.g. 32-bit on Windows with HDF5 2.x
+    let offset = 1 << 33;
+    let pl = DCB::new().external("foo", offset, 1).finish()?;
+    assert_eq!(pl.get_external()?[0].offset, offset);
+    Ok(())
+}
+
 #[cfg(feature = "1.10.0")]
 #[test]
 fn test_dcpl_virtual_map() -> hdf5::Result<()> {
@@ -844,11 +996,37 @@ fn test_dcpl_attr_phase_change() -> hdf5::Result<()> {
 
 #[test]
 fn test_dcpl_attr_creation_order() -> hdf5::Result<()> {
-    assert_eq!(DC::try_new()?.get_attr_creation_order()?.bits(), 0);
-    assert_eq!(DC::try_new()?.attr_creation_order().bits(), 0);
-    test_pl!(DC, attr_creation_order: AttrCreationOrder::TRACKED);
-    test_pl!(DC, attr_creation_order: AttrCreationOrder::TRACKED | AttrCreationOrder::INDEXED);
-    assert!(DCB::new().attr_creation_order(AttrCreationOrder::INDEXED).finish().is_err());
+    assert_eq!(DC::try_new()?.get_attr_creation_order()?, AttrCreationOrder::Untracked);
+    assert_eq!(DC::try_new()?.attr_creation_order(), AttrCreationOrder::Untracked);
+    test_pl!(DC, attr_creation_order: AttrCreationOrder::Tracked);
+    test_pl!(DC, attr_creation_order: AttrCreationOrder::Indexed);
+    Ok(())
+}
+
+type AC = AttributeCreate;
+type ACB = AttributeCreateBuilder;
+
+#[test]
+fn test_acpl_common() -> hdf5::Result<()> {
+    test_pl_common!(AC, PropertyListClass::AttributeCreate, |b: &mut ACB| b
+        .char_encoding(CharEncoding::Utf8)
+        .finish());
+    Ok(())
+}
+
+#[test]
+fn test_acpl_char_encoding() -> hdf5::Result<()> {
+    assert_eq!(AC::try_new()?.get_char_encoding()?, CharEncoding::Ascii);
+    assert_eq!(
+        ACB::new().char_encoding(CharEncoding::Utf8).finish()?.get_char_encoding()?,
+        CharEncoding::Utf8
+    );
+    assert_eq!(
+        ACB::new().char_encoding(CharEncoding::Utf8).finish()?.char_encoding(),
+        CharEncoding::Utf8
+    );
+    let pl = ACB::new().char_encoding(CharEncoding::Utf8).finish()?;
+    assert_eq!(ACB::from_plist(&pl)?.finish()?.get_char_encoding()?, CharEncoding::Utf8);
     Ok(())
 }
 
@@ -910,4 +1088,36 @@ fn test_lcpl_char_encoding() -> hdf5::Result<()> {
     let pl = LCB::new().char_encoding(CharEncoding::Utf8).finish()?;
     assert_eq!(LCB::from_plist(&pl)?.finish()?.get_char_encoding()?, CharEncoding::Utf8);
     Ok(())
+}
+
+#[test]
+#[cfg(any(all(feature = "1.10.7", not(feature = "1.12.0")), feature = "1.12.1"))]
+fn test_fapl_file_locking() -> hdf5::Result<()> {
+    test_pl!(FA, file_locking: true);
+    test_pl!(FA, file_locking: false);
+    Ok(())
+}
+
+#[test]
+fn test_dcpl_filter_requires_chunking() -> hdf5::Result<()> {
+    let mut b = DatasetCreate::build();
+    b.deflate(4);
+    let err = b.finish().unwrap_err();
+    assert_eq!(err.to_string(), "Filter requires dataset to be chunked");
+    assert!(err.stack().is_none(), "expected a Rust-side error, got a stack: {err:?}");
+
+    // Adding a chunk makes it valid
+    b.chunk([4]);
+    b.finish()?;
+    Ok(())
+}
+
+#[test]
+fn test_property_list_class_from_str() {
+    assert_eq!(
+        PropertyListClass::from_str("dataset create").unwrap(),
+        PropertyListClass::DatasetCreate
+    );
+    let err = PropertyListClass::from_str("not a class").unwrap_err();
+    assert_eq!(err.to_string(), "invalid property list class: not a class");
 }

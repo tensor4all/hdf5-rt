@@ -218,8 +218,9 @@ impl DatasetBuilder {
         self.empty_as(&T::type_descriptor())
     }
 
-    pub fn empty_as(self, type_desc: &TypeDescriptor) -> DatasetBuilderEmpty {
-        DatasetBuilderEmpty { builder: self.builder, type_desc: type_desc.clone() }
+    /// Sets the dataset's type from a descriptor or an existing datatype, see [`DatasetType`].
+    pub fn empty_as(self, dtype: impl Into<DatasetType>) -> DatasetBuilderEmpty {
+        DatasetBuilderEmpty { builder: self.builder, dtype: dtype.into() }
     }
 
     pub fn with_data<'d, A, T, D>(self, data: A) -> DatasetBuilderData<'d, T, D>
@@ -228,13 +229,15 @@ impl DatasetBuilder {
         T: H5Type,
         D: ndarray::Dimension,
     {
-        self.with_data_as::<A, T, D>(data, &T::type_descriptor())
+        self.with_data_as::<A, T, D>(data, T::type_descriptor())
     }
 
+    /// Sets the dataset's data and its type from a descriptor or an existing datatype, see
+    /// [`DatasetType`].
     pub fn with_data_as<'d, A, T, D>(
         self,
         data: A,
-        type_desc: &TypeDescriptor,
+        dtype: impl Into<DatasetType>,
     ) -> DatasetBuilderData<'d, T, D>
     where
         A: Into<ArrayView<'d, T, D>>,
@@ -244,7 +247,7 @@ impl DatasetBuilder {
         DatasetBuilderData {
             builder: self.builder,
             data: data.into(),
-            type_desc: type_desc.clone(),
+            dtype: dtype.into(),
             conv: Conversion::Soft,
         }
     }
@@ -278,18 +281,85 @@ impl DatasetBuilder {
     // }
 }
 
+/// The type a dataset is created with.
+///
+/// [`DatasetBuilder::empty_as`] and [`DatasetBuilder::with_data_as`] take anything that
+/// converts into it: a [`TypeDescriptor`], a [`Datatype`] or a [`CommittedDatatype`], by
+/// value or by reference.
+///
+/// A descriptor becomes a transient datatype when the dataset is created, laid out as
+/// [`packed`](DatasetBuilder::packed) says. An existing datatype is passed to `H5Dcreate2`
+/// as is, so `packed` is rejected for it. With a committed datatype from the same file the
+/// dataset stores a reference to the committed type instead of a copy of it. A committed
+/// datatype from another file is stored as a copy: the runtime loader requires HDF5 1.10.4
+/// or later, and libraries from 1.8.18 on (except 1.10.0) write the copy instead of a
+/// reference the file cannot resolve.
+#[derive(Clone, Debug)]
+pub enum DatasetType {
+    /// A descriptor, turned into a transient datatype when the dataset is created.
+    Descriptor(TypeDescriptor),
+    /// An existing datatype, used as is.
+    Datatype(Datatype),
+}
+
+impl DatasetType {
+    /// The datatype the data is converted to, for checking the conversion.
+    pub(crate) fn to_datatype(&self) -> Result<Datatype> {
+        match self {
+            Self::Descriptor(desc) => Datatype::from_descriptor(desc),
+            Self::Datatype(dtype) => Ok(dtype.clone()),
+        }
+    }
+}
+
+impl From<TypeDescriptor> for DatasetType {
+    fn from(desc: TypeDescriptor) -> Self {
+        Self::Descriptor(desc)
+    }
+}
+
+impl From<&TypeDescriptor> for DatasetType {
+    fn from(desc: &TypeDescriptor) -> Self {
+        Self::Descriptor(desc.clone())
+    }
+}
+
+impl From<Datatype> for DatasetType {
+    fn from(dtype: Datatype) -> Self {
+        Self::Datatype(dtype)
+    }
+}
+
+impl From<&Datatype> for DatasetType {
+    fn from(dtype: &Datatype) -> Self {
+        Self::Datatype(dtype.clone())
+    }
+}
+
+impl From<CommittedDatatype> for DatasetType {
+    fn from(dtype: CommittedDatatype) -> Self {
+        Self::Datatype(dtype.as_datatype().clone())
+    }
+}
+
+impl From<&CommittedDatatype> for DatasetType {
+    fn from(dtype: &CommittedDatatype) -> Self {
+        Self::Datatype(dtype.as_datatype().clone())
+    }
+}
+
 #[derive(Clone)]
 /// A dataset builder with the type known
 pub struct DatasetBuilderEmpty {
     builder: DatasetBuilderInner,
-    type_desc: TypeDescriptor,
+    dtype: DatasetType,
 }
 
 impl DatasetBuilderEmpty {
     pub fn shape<S: Into<Extents>>(self, extents: S) -> DatasetBuilderEmptyShape {
         DatasetBuilderEmptyShape {
             builder: self.builder,
-            type_desc: self.type_desc,
+            dtype: self.dtype,
             extents: extents.into(),
         }
     }
@@ -302,13 +372,13 @@ impl DatasetBuilderEmpty {
 /// A dataset builder with type and shape known
 pub struct DatasetBuilderEmptyShape {
     builder: DatasetBuilderInner,
-    type_desc: TypeDescriptor,
+    dtype: DatasetType,
     extents: Extents,
 }
 
 impl DatasetBuilderEmptyShape {
     pub fn create<'n, T: Into<Maybe<&'n str>>>(&self, name: T) -> Result<Dataset> {
-        h5lock!(self.builder.create(&self.type_desc, name.into().into(), &self.extents))
+        h5lock!(self.builder.create(&self.dtype, name.into().into(), &self.extents))
     }
 }
 
@@ -317,7 +387,7 @@ impl DatasetBuilderEmptyShape {
 pub struct DatasetBuilderData<'d, T, D> {
     builder: DatasetBuilderInner,
     data: ArrayView<'d, T, D>,
-    type_desc: TypeDescriptor,
+    dtype: DatasetType,
     conv: Conversion,
 }
 
@@ -347,9 +417,9 @@ where
         let name = name.into().into();
         h5lock!({
             let dtype_src = Datatype::from_type::<T>()?;
-            let dtype_dst = Datatype::from_descriptor(&self.type_desc)?;
+            let dtype_dst = self.dtype.to_datatype()?;
             dtype_src.ensure_convertible(&dtype_dst, self.conv)?;
-            let ds = self.builder.create(&self.type_desc, name, &extents)?;
+            let ds = self.builder.create(&self.dtype, name, &extents)?;
             if let Err(err) = ds.write(self.data.view()) {
                 self.builder.try_unlink(name);
                 Err(err)
@@ -541,16 +611,43 @@ impl DatasetBuilderInner {
         }
     }
 
+    /// Creates the dataset with the in-file datatype built from `dtype`.
+    ///
+    /// # Safety
+    ///
+    /// Must be called with the library lock held, see `h5lock!`.
     unsafe fn create(
         &self,
-        desc: &TypeDescriptor,
+        dtype: &DatasetType,
         name: Option<&str>,
         extents: &Extents,
     ) -> Result<Dataset> {
-        // construct in-file type descriptor; convert to packed representation if needed
-        let desc = if self.packed { desc.to_packed_repr() } else { desc.to_c_repr() };
-        let dtype = Datatype::from_descriptor(&desc)?;
+        let dtype = match dtype {
+            DatasetType::Descriptor(desc) => {
+                // build the in-file type from the descriptor, packed if requested
+                let desc = if self.packed { desc.to_packed_repr() } else { desc.to_c_repr() };
+                Datatype::from_descriptor(&desc)?
+            }
+            DatasetType::Datatype(dtype) => {
+                ensure!(!self.packed, "packed layout cannot be applied to an existing datatype");
+                dtype.clone()
+            }
+        };
+        self.create_dataset(&dtype, name, extents)
+    }
 
+    /// Creates the dataset with `dtype`, the property lists and the dataspace.
+    ///
+    /// # Safety
+    ///
+    /// Must be called with the library lock held, see `h5lock!`. The raw
+    /// `H5Dcreate2` and `H5Dcreate_anon` calls below rely on it.
+    unsafe fn create_dataset(
+        &self,
+        dtype: &Datatype,
+        name: Option<&str>,
+        extents: &Extents,
+    ) -> Result<Dataset> {
         // construct DAPL and DCPL, validate filters
         let dapl = self.build_dapl()?;
         let dcpl = self.build_dcpl(&dtype, extents)?;
@@ -915,7 +1012,7 @@ impl DatasetBuilderInner {
 
 macro_rules! impl_builder {
     ($plist:ident: $name:ident/$short:ident) => {
-        paste::paste! {
+        pastey::paste! {
             #[inline] #[must_use]
             pub fn [<set_ $name _plist>](mut self, $short: &$plist) -> Self {
                 self.builder.[<set_ $name _plist>]($short); self
@@ -963,7 +1060,7 @@ macro_rules! impl_builder {
         $(#[$meta:meta])*
         $plist:ident: $name:ident($($var:ident: $ty:ty),*)
     ) => {
-        paste::paste! {
+        pastey::paste! {
             $(#[$meta])*
             #[inline] #[must_use] #[doc =
                 "\u{21b3} [`" $plist "Builder::" $name "`]"
@@ -978,7 +1075,7 @@ macro_rules! impl_builder {
         $(#[$meta:meta])*
         $plist:ident: $name:ident<$($gid:ident: $gty:path),+>($($var:ident: $ty:ty),*)
     ) => {
-        paste::paste! {
+        pastey::paste! {
             $(#[$meta])*
             #[inline] #[must_use] #[doc =
                 "\u{21b3} [`" $plist "Builder::" $name "`]"
@@ -1117,88 +1214,4 @@ impl<'d, T2: H5Type, D2: ndarray::Dimension> DatasetBuilderData<'d, T2, D2> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{compute_chunk_shape, DatasetBuilder};
-    use crate::filters::Filter;
-    use crate::test::with_tmp_file;
-    use crate::{Extent, Result, SimpleExtents};
-
-    #[cfg(feature = "blosc")]
-    use crate::filters::{Blosc, BloscShuffle};
-
-    use ndarray::Array2;
-
-    #[allow(dead_code)]
-    fn check_filter(func: impl Fn(DatasetBuilder) -> DatasetBuilder, flt: Filter) {
-        let filters = vec![flt];
-        with_tmp_file::<Result<_>, _>(|file| {
-            let arr = Array2::<i64>::ones((1000, 20));
-            func(file.new_dataset_builder()).with_data(&arr).create("foo")?;
-            let ds = file.dataset("foo")?;
-            assert_eq!(ds.filters(), filters);
-            assert_eq!(ds.read_2d::<i64>()?, &arr);
-            Ok(())
-        })
-        .unwrap()
-    }
-
-    #[test]
-    #[cfg(feature = "blosc-zstd")]
-    fn test_blosc() {
-        check_filter(|d| d.blosc_zstd(9, true), Filter::Blosc(Blosc::ZStd, 9, BloscShuffle::Byte));
-    }
-
-    #[test]
-    #[cfg(feature = "lzf")]
-    fn test_lzf() {
-        check_filter(|d| d.lzf(), Filter::LZF);
-    }
-
-    #[test]
-    fn test_compute_chunk_shape() {
-        let e = SimpleExtents::new(&[1, 1]);
-        assert_eq!(compute_chunk_shape(&e, 1), vec![1, 1]);
-        let e = SimpleExtents::new(&[1, 10]);
-        assert_eq!(compute_chunk_shape(&e, 3), vec![1, 3]);
-        let e = SimpleExtents::new(&[1, 10]);
-        assert_eq!(compute_chunk_shape(&e, 11), vec![1, 10]);
-
-        let e = SimpleExtents::new(&[Extent::from(1), Extent::from(10..)]);
-        assert_eq!(compute_chunk_shape(&e, 11), vec![1, 11]);
-
-        let e = SimpleExtents::new(&[Extent::from(1), Extent::from(10..)]);
-        assert_eq!(compute_chunk_shape(&e, 9), vec![1, 9]);
-
-        let e = SimpleExtents::new(&[4, 4, 4]);
-        // chunk shape should be greedy here, a minimal
-        // chunk shape would be (1, 3, 4) + (1, 1, 4)
-        assert_eq!(compute_chunk_shape(&e, 12), vec![1, 4, 4]);
-
-        let e = SimpleExtents::new(&[4, 4, 4]);
-        assert_eq!(compute_chunk_shape(&e, 100), vec![4, 4, 4]);
-
-        let e = SimpleExtents::new(&[4, 4, 4]);
-        assert_eq!(compute_chunk_shape(&e, 9), vec![1, 2, 4]);
-
-        let e = SimpleExtents::new(&[1, 1, 100]);
-        assert_eq!(compute_chunk_shape(&e, 51), vec![1, 1, 100]);
-    }
-
-    #[test]
-    fn test_read_write_scalar() {
-        use crate::internal_prelude::*;
-        with_tmp_file(|file| {
-            if !crate::filters::deflate_available() {
-                return;
-            }
-            let val: f64 = 0.2;
-            let dataset = file.new_dataset::<f64>().deflate(3).create("foo");
-            assert_err_re!(dataset, "Filter requires dataset to be chunked");
-
-            let dataset = file.new_dataset::<f64>().create("foo").unwrap();
-            dataset.write_scalar(&val).unwrap();
-            let val_back = dataset.read_scalar().unwrap();
-            assert_eq!(val, val_back);
-        })
-    }
-}
+mod tests;

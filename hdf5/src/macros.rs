@@ -177,8 +177,8 @@ macro_rules! h5err {
         let msg = to_cstring($msg).unwrap_or_default();
         #[allow(unused_unsafe)]
         unsafe {
-            ::hdf5_sys::h5e::H5Epush2(
-                ::hdf5_sys::h5e::H5E_DEFAULT,
+            crate::sys::h5e::H5Epush2(
+                crate::sys::h5e::H5E_DEFAULT,
                 file.as_ptr(),
                 modpath.as_ptr(),
                 line as _,
